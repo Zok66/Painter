@@ -1,0 +1,211 @@
+.toolbar {
+  flex: 0 0 auto;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: var(--painter-bar);
+  border-bottom: 1px solid var(--painter-border);
+  box-shadow: var(--painter-shadow);
+  z-index: 5;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--painter-green);
+  color: #fff;
+}
+
+.logo-text {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--painter-text);
+}
+
+.logo-text em {
+  font-style: normal;
+  font-size: 13px;
+  color: var(--painter-text-soft);
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  background: var(--painter-border);
+  margin: 0 4px;
+}
+
+/* 扁平按钮,无阴影无渐变 */
+.btn {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--painter-text);
+  background: #fff;
+  border: 1px solid var(--painter-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--painter-green-light);
+  border-color: var(--painter-green);
+}
+
+.btn:active:not(:disabled) {
+  background: #ddf6e4;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--painter-green);
+  border-color: var(--painter-green);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--painter-green-dark);
+  border-color: var(--painter-green-dark);
+}
+
+.btn-accent {
+  background: var(--painter-green-light);
+  border-color: var(--painter-green);
+  color: var(--painter-green-dark);
+}
+
+.btn-accent:hover:not(:disabled) {
+  background: #d9f5e2;
+}
+
+.btn-danger {
+  color: #c0392b;
+  border-color: #f0c8c3;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #fdeeeb;
+  border-color: #e57369;
+}
+
+.btn-icon {
+  width: 34px;
+  padding: 0;
+  font-size: 16px;
+  text-align: center;
+}
+
+.btn-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--painter-text-soft);
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-link:hover {
+  background: var(--painter-green-light);
+  border-color: var(--painter-border);
+  color: var(--painter-green-dark);
+}
+
+/* —— 字体大小自定义输入控件(参考 processon 数字 px) —— */
+.font-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 34px;
+  background: #fff;
+  border: 1px solid var(--painter-border);
+  border-radius: 8px;
+  transition: border-color 0.12s ease;
+}
+
+.font-size-control.disabled {
+  opacity: 0.5;
+}
+
+.font-size-control:focus-within {
+  border-color: var(--painter-green);
+}
+
+.font-size-label {
+  font-size: 12px;
+  color: var(--painter-text-soft);
+  user-select: none;
+}
+
+.font-size-input {
+  width: 48px;
+  height: 26px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--painter-text);
+  text-align: center;
+  background: var(--painter-bg);
+  border: 1px solid var(--painter-border);
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.12s ease;
+  /* 隐藏 number input 的上下箭头 */
+  -moz-appearance: textfield;
+}
+
+.font-size-input::-webkit-outer-spin-button,
+.font-size-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.font-size-input:focus {
+  border-color: var(--painter-green);
+}
+
+.font-size-input:disabled {
+  cursor: not-allowed;
+}
+
+.font-size-input::placeholder {
+  color: var(--painter-text-soft);
+  font-size: 12px;
+}
+
+.font-size-unit {
+  font-size: 12px;
+  color: var(--painter-text-soft);
+  user-select: none;
+}

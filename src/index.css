@@ -1,0 +1,45 @@
+:root {
+  /* 主题色 —— 扁平纯色,鲜亮绿 */
+  --painter-green: #22c55e;
+  --painter-green-dark: #16a34a;
+  --painter-green-light: #e9fbeF;
+  --painter-bg: #f4f7f5;
+  --painter-bar: #ffffff;
+  --painter-border: #e3e8e5;
+  --painter-text: #1f2a24;
+  --painter-text-soft: #5b6b62;
+  --painter-shadow: 0 1px 2px rgba(20, 40, 30, 0.04);
+  --painter-hover: #e8f5ec;
+  --painter-bg-dark: #1e1e1e;
+  --painter-border-dark: #3a3a3a;
+  --painter-hover-dark: #2a2a2a;
+  --painter-tooltip-bg: #333;
+
+  font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  color: var(--painter-text);
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--painter-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}

@@ -1,0 +1,78 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--painter-bg);
+}
+
+.canvas-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.canvas-wrap .excalidraw {
+  width: 100%;
+  height: 100%;
+}
+
+/* —— Excalidraw 主题色变量覆盖:绿色扁平主调 —— */
+.excalidraw {
+  --color-primary: #22c55e;
+  --color-primary-darker: #16a34a;
+  --color-primary-darkest: #15803d;
+  --color-primary-light: #e9fbef;
+  --color-primary-soft-light: #f0fdf4;
+  --color-selection: #22c55e;
+  --color-selection-background: rgba(34, 197, 94, 0.18);
+  --icon-green: #22c55e;
+  --color-on-primary-container: #ffffff;
+}
+
+.excalidraw.theme--dark {
+  /* 深色主题下保持绿色主调 */
+  --color-primary: #34d97a;
+  --color-primary-darker: #22c55e;
+  --color-primary-darkest: #16a34a;
+  --color-primary-light: #1f3a2c;
+  --color-primary-soft-light: #18302a;
+}
+
+/* 让画布背景与整体风格协调 */
+.excalidraw .excalidraw__canvas-wrapper,
+.excalidraw {
+  background: var(--painter-bg);
+}
+
+/* 加载占位 */
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 4;
+  color: var(--painter-text-soft);
+  font-size: 14px;
+  background: var(--painter-bg);
+  pointer-events: none;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--painter-border);
+  border-top-color: var(--painter-green);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
