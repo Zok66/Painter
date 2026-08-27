@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import "./Toolbar.css";
 
 /** 工具栏可执行的操作集合,由 App 通过 props 注入 */
@@ -10,10 +10,6 @@ export interface ToolbarActions {
   onExportSvg: () => void;
   onClear: () => void;
   onToggleTheme: () => void;
-  /** 修改选中元素的字体大小(px) */
-  onFontSizeChange: (size: number) => void;
-  /** 当前选中文本元素的字体大小,null 表示未选中 */
-  selectedFontSize: number | null;
   isDark: boolean;
 }
 
@@ -31,24 +27,10 @@ export default function Toolbar(props: ToolbarProps) {
     onExportSvg,
     onClear,
     onToggleTheme,
-    onFontSizeChange,
-    selectedFontSize,
     isDark,
     saving,
   } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // 字体大小输入框的本地值,用户输入时不被外部覆盖
-  const [fontSizeInput, setFontSizeInput] = useState<string>("");
-  const fontSizeInputRef = useRef<HTMLInputElement>(null);
-
-  // 选中元素变化时同步输入框(仅在未聚焦时,避免打断用户输入)
-  useEffect(() => {
-    const el = fontSizeInputRef.current;
-    const isFocused = el && document.activeElement === el;
-    if (!isFocused) {
-      setFontSizeInput(selectedFontSize == null ? "" : String(selectedFontSize));
-    }
-  }, [selectedFontSize]);
 
   const handleOpenClick = () => fileInputRef.current?.click();
 
@@ -58,28 +40,6 @@ export default function Toolbar(props: ToolbarProps) {
     e.target.value = ""; // 允许重复选同一文件
   };
 
-  // 提交字体大小输入(回车或失焦时)
-  const commitFontSize = () => {
-    const raw = fontSizeInput.trim();
-    if (raw === "") return;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return;
-    onFontSizeChange(n);
-  };
-
-  const handleFontSizeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      commitFontSize();
-      (e.target as HTMLInputElement).blur();
-    } else if (e.key === "Escape") {
-      // 取消编辑,恢复显示
-      setFontSizeInput(selectedFontSize == null ? "" : String(selectedFontSize));
-      (e.target as HTMLInputElement).blur();
-    }
-  };
-
-  const fontSizeDisabled = selectedFontSize == null;
 
   return (
     <header className="toolbar">
@@ -122,30 +82,6 @@ export default function Toolbar(props: ToolbarProps) {
 
         <div className="divider" />
 
-        {/* 字体大小自定义输入(参考 processon 数字 px) */}
-        <div
-          className={`font-size-control${fontSizeDisabled ? " disabled" : ""}`}
-          title={fontSizeDisabled ? "选中文本元素后可修改字体大小" : "字体大小(px),回车应用"}
-        >
-          <span className="font-size-label">字号</span>
-          <input
-            ref={fontSizeInputRef}
-            className="font-size-input"
-            type="number"
-            min={1}
-            max={200}
-            step={1}
-            value={fontSizeInput}
-            placeholder={fontSizeDisabled ? "—" : "px"}
-            disabled={fontSizeDisabled}
-            onChange={(e) => setFontSizeInput(e.target.value)}
-            onBlur={commitFontSize}
-            onKeyDown={handleFontSizeKeyDown}
-          />
-          <span className="font-size-unit">px</span>
-        </div>
-
-        <div className="divider" />
 
         <button className="btn btn-danger" onClick={onClear} title="清空当前画布">
           清空

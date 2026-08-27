@@ -45,8 +45,6 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [initialData, setInitialData] = useState<any>(null);
   const [ready, setReady] = useState(false);
-  // 当前选中文本元素的字体大小,null 表示未选中文本元素
-  const [selectedFontSize, setSelectedFontSize] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 读取本地自动保存的场景
@@ -59,17 +57,9 @@ export default function App() {
     }
   }, []);
 
-  // 自动保存到 localStorage(防抖)+ 同步选中文本元素的字体大小
+  // 自动保存到 localStorage(防抖)
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      // 同步当前选中文本元素的字体大小到工具栏
-      const selectedIds = Object.keys(appState.selectedElementIds || {});
-      const selectedText = elements.find(
-        (el): el is Extract<ExcalidrawElement, { type: "text" }> =>
-          el.type === "text" && selectedIds.includes(el.id),
-      );
-      setSelectedFontSize(selectedText ? selectedText.fontSize : null);
-
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         try {
@@ -207,27 +197,6 @@ export default function App() {
   // 切换主题
   const handleToggleTheme = useCallback(() => setIsDark((v) => !v), []);
 
-  // 修改选中元素的字体大小(支持自定义 px 输入,参考 processon)
-  const handleFontSizeChange = useCallback(
-    (size: number) => {
-      if (!excalidrawAPI) return;
-      const appState = excalidrawAPI.getAppState();
-      const elements = excalidrawAPI.getSceneElements() as ExcalidrawElement[];
-      const selectedIds = Object.keys(appState.selectedElementIds || {});
-      // 限定范围 [1, 200],与 Excalidraw MIN_FONT_SIZE=1 对齐
-      const clamped = Math.max(1, Math.min(200, Math.round(size)));
-      let changed = false;
-      for (const el of elements) {
-        if (el.type === "text" && selectedIds.includes(el.id)) {
-          excalidrawAPI.mutateElement(el as any, { fontSize: clamped });
-          changed = true;
-        }
-      }
-      if (changed) setSelectedFontSize(clamped);
-    },
-    [excalidrawAPI],
-  );
-
   const actions = useMemo(
     () => ({
       onNew: handleNew,
@@ -237,11 +206,9 @@ export default function App() {
       onExportSvg: handleExportSvg,
       onClear: handleClear,
       onToggleTheme: handleToggleTheme,
-      onFontSizeChange: handleFontSizeChange,
       isDark,
-      selectedFontSize,
     }),
-    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleFontSizeChange, isDark, selectedFontSize],
+    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, isDark],
   );
 
   return (
