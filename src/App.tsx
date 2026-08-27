@@ -115,7 +115,10 @@ export default function App() {
           elements: data.elements,
           appState: data.appState,
         });
-        excalidrawAPI.scrollToContent(undefined, { fitToContent: true, animate: true });
+        const api = excalidrawAPI as any;
+        if (typeof api.scrollToContent === "function") {
+          api.scrollToContent(undefined, { fitToContent: true, animate: true });
+        }
         toast(`已打开 ${file.name}`);
       } catch (err) {
         console.error(err);
