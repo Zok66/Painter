@@ -115,7 +115,7 @@ export function buildShapeElement(
     } as unknown as ExcalidrawElement;
   }
 
-  // triangle / star5 / pentagon / hexagon：闭合 line 多边形
+  // triangle / star5 / trapezoid / pentagon / hexagon：闭合 line 多边形
   const polygon = result.polygon;
   if (polygon.length < 3) return null;
   const x = polygon[0].x;

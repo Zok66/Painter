@@ -13,6 +13,7 @@ export type RecognizedShapeType =
   | "arrow"
   | "rectangle"
   | "diamond"
+  | "trapezoid"
   | "ellipse"
   | "triangle"
   | "star5"
@@ -271,6 +272,30 @@ function polygonArea(points: Point[]): number {
   return Math.abs(sum / 2);
 }
 
+// 梯形：4 个角点且恰好一组对边平行。
+// 用两条对边方向向量归一化叉积判断平行，矩形/菱形两组对边都平行，
+// 不规则四边形则一组都不平行。
+function isTrapezoid(corners: Corner[]): boolean {
+  if (corners.length !== 4) return false;
+  const pts = corners.map((c) => c.point);
+  const edges: Point[] = [
+    { x: pts[1].x - pts[0].x, y: pts[1].y - pts[0].y },
+    { x: pts[2].x - pts[1].x, y: pts[2].y - pts[1].y },
+    { x: pts[3].x - pts[2].x, y: pts[3].y - pts[2].y },
+    { x: pts[0].x - pts[3].x, y: pts[0].y - pts[3].y },
+  ];
+  const isParallel = (a: Point, b: Point): boolean => {
+    const lenA = Math.hypot(a.x, a.y);
+    const lenB = Math.hypot(b.x, b.y);
+    if (lenA === 0 || lenB === 0) return false;
+    const cross = Math.abs(a.x * b.y - a.y * b.x) / (lenA * lenB);
+    return cross < 0.18;
+  };
+  const pair1 = isParallel(edges[0], edges[2]);
+  const pair2 = isParallel(edges[1], edges[3]);
+  return pair1 !== pair2;
+}
+
 function classifyClosed(
   detection: CornerDetection,
   bbox: [number, number, number, number],
@@ -293,6 +318,8 @@ function classifyClosed(
   if (convex) {
     if (count === 3) return "triangle";
     if (count === 4) {
+      // 只有一组对边平行的是梯形；两组都平行才落回矩形/菱形
+      if (isTrapezoid(corners)) return "trapezoid";
       const area = polygonArea(corners.map((c) => c.point));
       const boxArea = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]);
       const fill = boxArea > 0 ? area / boxArea : 0;
@@ -315,6 +342,7 @@ function classifyClosed(
 const polygonTypes = new Set<RecognizedShapeType>([
   "triangle",
   "star5",
+  "trapezoid",
   "pentagon",
   "hexagon",
 ]);

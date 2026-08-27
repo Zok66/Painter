@@ -332,16 +332,10 @@ export default function App() {
         ? elements.filter((el) => el.id !== preview.id)
         : elements;
       if (!shape) {
-        // 识别失败：把手绘轨迹保留下来，恢复正常透明度
-        const finalFreedraw = buildFreedrawPreview(
-          points,
-          api.getAppState(),
-          preview ? preview.id : `smart-preview-${Date.now()}`,
-          api.getAppState().currentItemOpacity,
-        );
+        // 识别失败：不生成任何元素，只移除预览轨迹
         api.updateScene({
-          elements: [...withoutPreview, finalFreedraw],
-          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+          elements: withoutPreview,
+          captureUpdate: CaptureUpdateAction.NEVER,
         });
         return;
       }
