@@ -10,6 +10,7 @@ export interface ToolbarActions {
   onExportSvg: () => void;
   onClear: () => void;
   onToggleTheme: () => void;
+  onSmartShape: () => void;
   isDark: boolean;
 }
 
@@ -27,6 +28,7 @@ export default function Toolbar(props: ToolbarProps) {
     onExportSvg,
     onClear,
     onToggleTheme,
+    onSmartShape,
     isDark,
     saving,
   } = props;
@@ -78,6 +80,13 @@ export default function Toolbar(props: ToolbarProps) {
         </button>
         <button className="btn btn-accent" onClick={onExportSvg} title="导出 SVG 矢量图">
           导出 SVG
+        </button>
+        <button
+          className="btn btn-accent"
+          onClick={onSmartShape}
+          title="智能画笔：手绘三角形、五角星等图形，松手自动识别"
+        >
+          智能画笔
         </button>
 
         <div className="divider" />

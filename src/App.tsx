@@ -6,18 +6,27 @@ import {
   serializeAsJSON,
   loadFromBlob,
   THEME,
+  CaptureUpdateAction,
 } from "@excalidraw/excalidraw";
 import type {
   ExcalidrawImperativeAPI,
   AppState,
   BinaryFiles,
+  ActiveTool,
+  PointerDownState,
 } from "@excalidraw/excalidraw/types";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type {
+  ExcalidrawElement,
+  ExcalidrawFreeDrawElement,
+} from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 import Toolbar from "./components/Toolbar";
+import { buildShapeElement, buildFreedrawPreview } from "./lib/buildShapeElement";
+import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
 
 const STORAGE_KEY = "painter:scene:v1";
+const SMART_SHAPE_TOOL = "smart-shape";
 
 /** 触发浏览器下载 */
 function download(blob: Blob, filename: string) {
@@ -46,6 +55,12 @@ export default function App() {
   const [initialData, setInitialData] = useState<any>(null);
   const [ready, setReady] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const smartShapePointsRef = useRef<Point[]>([]);
+  const smartShapeDrawingRef = useRef(false);
+  const smartShapePreviewRef = useRef<ExcalidrawFreeDrawElement | null>(null);
+  const smartShapePendingPointsRef = useRef<Point[]>([]);
+  const smartShapeRafRef = useRef<number | null>(null);
 
   // 读取本地自动保存的场景
   useEffect(() => {
@@ -197,6 +212,148 @@ export default function App() {
   // 切换主题
   const handleToggleTheme = useCallback(() => setIsDark((v) => !v), []);
 
+  // 启用智能画笔：手绘后松手自动识别为形状
+  const handleSmartShape = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
+    api.setActiveTool(
+      { type: "custom", customType: SMART_SHAPE_TOOL, locked: true },
+    );
+    toast("智能画笔已启用：画出三角形、五角星等图形后松手自动识别");
+  }, [toast]);
+
+  // 自研智能画笔：完全自己采集轨迹，不经过 Excalidraw 的 freedraw/autoshape
+  const handlePointerDown = useCallback(
+    (activeTool: ActiveTool, pointerDownState: PointerDownState) => {
+      if (
+        activeTool.type === "custom" &&
+        activeTool.customType === SMART_SHAPE_TOOL
+      ) {
+        smartShapeDrawingRef.current = true;
+        const points = [
+          { x: pointerDownState.origin.x, y: pointerDownState.origin.y },
+        ];
+        smartShapePointsRef.current = points;
+        smartShapePendingPointsRef.current = points;
+        const api = excalidrawAPIRef.current;
+        if (api) {
+          const previewId = `smart-preview-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
+          const preview = buildFreedrawPreview(
+            points,
+            api.getAppState(),
+            previewId,
+          );
+          smartShapePreviewRef.current = preview;
+          const elements = api.getSceneElements();
+          api.updateScene({
+            elements: [...elements, preview],
+            captureUpdate: CaptureUpdateAction.NEVER,
+          });
+        }
+      }
+    },
+    [],
+  );
+
+  const handlePointerUpdate = useCallback(
+    (payload: {
+      pointer: { x: number; y: number; tool: "pointer" | "laser" };
+      button: "down" | "up";
+    }) => {
+      if (smartShapeDrawingRef.current && payload.button === "down") {
+        smartShapePointsRef.current.push({
+          x: payload.pointer.x,
+          y: payload.pointer.y,
+        });
+        smartShapePendingPointsRef.current = smartShapePointsRef.current;
+        if (smartShapeRafRef.current == null) {
+          smartShapeRafRef.current = requestAnimationFrame(() => {
+            smartShapeRafRef.current = null;
+            const api = excalidrawAPIRef.current;
+            const preview = smartShapePreviewRef.current;
+            if (!api || !preview) return;
+            const next = buildFreedrawPreview(
+              smartShapePendingPointsRef.current,
+              api.getAppState(),
+              preview.id,
+            );
+            smartShapePreviewRef.current = next;
+            const elements = api.getSceneElements();
+            api.updateScene({
+              elements: [
+                ...elements.filter((el) => el.id !== next.id),
+                next,
+              ],
+              captureUpdate: CaptureUpdateAction.NEVER,
+            });
+          });
+        }
+      }
+    },
+    [],
+  );
+
+  const handlePointerUp = useCallback(
+    (activeTool: ActiveTool) => {
+      if (
+        !smartShapeDrawingRef.current ||
+        activeTool.type !== "custom" ||
+        activeTool.customType !== SMART_SHAPE_TOOL
+      ) {
+        return;
+      }
+      smartShapeDrawingRef.current = false;
+      if (smartShapeRafRef.current != null) {
+        cancelAnimationFrame(smartShapeRafRef.current);
+        smartShapeRafRef.current = null;
+      }
+      const points = smartShapePointsRef.current;
+      const api = excalidrawAPIRef.current;
+      const preview = smartShapePreviewRef.current;
+      if (!api) return;
+
+      if (points.length < 3) {
+        if (preview) {
+          api.updateScene({
+            elements: api
+              .getSceneElements()
+              .filter((el) => el.id !== preview.id),
+            captureUpdate: CaptureUpdateAction.NEVER,
+          });
+        }
+        return;
+      }
+
+      const shape = buildShapeElement(points, api.getAppState());
+      const elements = api.getSceneElements();
+      const withoutPreview = preview
+        ? elements.filter((el) => el.id !== preview.id)
+        : elements;
+      if (!shape) {
+        // 识别失败：把手绘轨迹保留下来，恢复正常透明度
+        const finalFreedraw = buildFreedrawPreview(
+          points,
+          api.getAppState(),
+          preview ? preview.id : `smart-preview-${Date.now()}`,
+          api.getAppState().currentItemOpacity,
+        );
+        api.updateScene({
+          elements: [...withoutPreview, finalFreedraw],
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+        });
+        return;
+      }
+      api.updateScene({
+        elements: [...withoutPreview, shape],
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      smartShapePreviewRef.current = null;
+    },
+    [],
+  );
+
   const actions = useMemo(
     () => ({
       onNew: handleNew,
@@ -206,9 +363,10 @@ export default function App() {
       onExportSvg: handleExportSvg,
       onClear: handleClear,
       onToggleTheme: handleToggleTheme,
+      onSmartShape: handleSmartShape,
       isDark,
     }),
-    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, isDark],
+    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, isDark],
   );
 
   return (
@@ -223,11 +381,15 @@ export default function App() {
         )}
         <Excalidraw
           onExcalidrawAPI={(api) => {
+            excalidrawAPIRef.current = api;
             setExcalidrawAPI(api);
             setReady(true);
           }}
           initialData={initialData}
           onChange={handleChange}
+          onPointerDown={handlePointerDown}
+          onPointerUpdate={handlePointerUpdate}
+          onPointerUp={handlePointerUp}
           theme={isDark ? THEME.DARK : THEME.LIGHT}
           UIOptions={{
             canvasActions: {
