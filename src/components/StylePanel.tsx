@@ -4,6 +4,7 @@ import "./StylePanel.css";
 export type StrokeWidthKey = "thin" | "medium" | "bold";
 export type StrokeStyle = "solid" | "dashed" | "dotted";
 export type Roughness = 0 | 1 | 2;
+export type RoundnessMode = "rounded" | "sharp";
 
 export interface DrawStyle {
   strokeColor: string;
@@ -11,6 +12,7 @@ export interface DrawStyle {
   strokeWidthKey: StrokeWidthKey;
   strokeStyle: StrokeStyle;
   roughness: Roughness;
+  roundness: RoundnessMode;
 }
 
 const STROKE_COLORS = [
@@ -49,6 +51,11 @@ const ROUGHNESS_LEVELS: { key: Roughness; label: string }[] = [
   { key: 0, label: "规整" },
   { key: 1, label: "手绘" },
   { key: 2, label: "潦草" },
+];
+
+const ROUNDNESS_OPTIONS: { key: RoundnessMode; label: string }[] = [
+  { key: "sharp", label: "直角" },
+  { key: "rounded", label: "圆角" },
 ];
 
 interface StylePanelProps {
@@ -153,6 +160,23 @@ export default function StylePanel({ style, onChange }: StylePanelProps) {
           ))}
         </div>
       </div>
+
+      <div className="style-section">
+        <span className="style-label">边角</span>
+        <div className="style-toggle-row">
+          {ROUNDNESS_OPTIONS.map((o) => (
+            <button
+              key={o.key}
+              className={`style-toggle ${style.roundness === o.key ? "active" : ""}`}
+              title={o.label}
+              aria-label={`边角 ${o.label}`}
+              onClick={() => onChange({ roundness: o.key })}
+            >
+              <RoundnessIcon mode={o.key} />
+            </button>
+          ))}
+        </div>
+      </div>
     </aside>
   );
 }
@@ -175,6 +199,37 @@ function RoughnessIcon({ level }: { level: Roughness }) {
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function RoundnessIcon({ mode }: { mode: RoundnessMode }) {
+  if (mode === "rounded") {
+    // 圆角：L 形带圆角
+    return (
+      <svg width="32" height="28" viewBox="0 0 32 28" className="roundness-icon">
+        <path
+          d="M6 22 L6 10 Q6 6 10 6 L22 6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  // 直角：L 形直角
+  return (
+    <svg width="32" height="28" viewBox="0 0 32 28" className="roundness-icon">
+      <path
+        d="M6 22 L6 6 L24 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="butt"
+        strokeLinejoin="miter"
       />
     </svg>
   );

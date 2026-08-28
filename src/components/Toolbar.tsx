@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import clsx from "clsx";
 import "./Toolbar.css";
 
 /** 工具栏可执行的操作集合,由 App 通过 props 注入 */
@@ -11,6 +12,7 @@ export interface ToolbarActions {
   onClear: () => void;
   onToggleTheme: () => void;
   onSmartShape: () => void;
+  smartShapeActive: boolean;
   isDark: boolean;
 }
 
@@ -29,6 +31,7 @@ export default function Toolbar(props: ToolbarProps) {
     onClear,
     onToggleTheme,
     onSmartShape,
+    smartShapeActive,
     isDark,
     saving,
   } = props;
@@ -82,7 +85,7 @@ export default function Toolbar(props: ToolbarProps) {
           导出 SVG
         </button>
         <button
-          className="btn btn-smartshape"
+          className={clsx("btn btn-smartshape", smartShapeActive && "active")}
           onClick={onSmartShape}
           title="智能画笔：手绘三角形、五角星等图形，松手自动识别（Shift+X）"
         >

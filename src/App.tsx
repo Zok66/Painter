@@ -23,6 +23,7 @@ import StylePanel, {
   type StrokeStyle,
   type StrokeWidthKey,
   type Roughness,
+  type RoundnessMode,
 } from "./components/StylePanel";
 import { buildShapeElement, buildPreviewPolyline } from "./lib/buildShapeElement";
 import type { Point } from "./lib/shapeRecognition";
@@ -31,12 +32,18 @@ import "./App.css";
 const STORAGE_KEY = "painter:scene:v1";
 const SMART_SHAPE_TOOL = "smart-shape";
 
+/** 判断工具是否属于"非智能画笔"的普通工具（用于自动退出智能画笔模式） */
+function isSmartShapeTool(tool: ActiveTool): boolean {
+  return tool.type === "custom" && tool.customType === SMART_SHAPE_TOOL;
+}
+
 const DEFAULT_DRAW_STYLE: DrawStyle = {
   strokeColor: "#1e1e1e",
   backgroundColor: "transparent",
   strokeWidthKey: "medium",
   strokeStyle: "solid",
   roughness: 1,
+  roundness: "sharp", // 默认为直角风格
 };
 
 /** 触发浏览器下载 */
@@ -66,7 +73,9 @@ export default function App() {
   const [initialData, setInitialData] = useState<any>(null);
   const [ready, setReady] = useState(false);
   const [drawStyle, setDrawStyle] = useState<DrawStyle>(DEFAULT_DRAW_STYLE);
+  const drawStyleRef = useRef<DrawStyle>(DEFAULT_DRAW_STYLE);
   const [styleReady, setStyleReady] = useState(false);
+  const [smartShapeActive, setSmartShapeActive] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const smartShapePointsRef = useRef<Point[]>([]);
@@ -88,6 +97,10 @@ export default function App() {
   // 自动保存到 localStorage(防抖)
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      // 智能画笔模式下，若用户切换到其它工具则自动退出
+      if (smartShapeActive && !isSmartShapeTool(appState.activeTool)) {
+        setSmartShapeActive(false);
+      }
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         try {
@@ -98,7 +111,7 @@ export default function App() {
         }
       }, 600);
     },
-    [],
+    [smartShapeActive],
   );
 
   const toast = useCallback((message: string, type: "success" | "error" = "success") => {
@@ -241,6 +254,7 @@ export default function App() {
       strokeWidthKey: pick<StrokeWidthKey>(["thin", "medium", "bold"], appState.currentItemStrokeWidthKey, DEFAULT_DRAW_STYLE.strokeWidthKey),
       strokeStyle: pick<StrokeStyle>(["solid", "dashed", "dotted"], appState.currentItemStrokeStyle, DEFAULT_DRAW_STYLE.strokeStyle),
       roughness: pick<Roughness>([0, 1, 2], appState.currentItemRoughness, DEFAULT_DRAW_STYLE.roughness),
+      roundness: drawStyleRef.current.roundness, // 从 ref 读取上次保存的 roundness
     });
     setStyleReady(true);
   }, [ready, styleReady]);
@@ -249,6 +263,8 @@ export default function App() {
   const handleStyleChange = useCallback((patch: Partial<DrawStyle>) => {
     setDrawStyle((prev) => {
       const next = { ...prev, ...patch };
+      // 同步更新 ref，供 handlePointerUp 等回调使用
+      drawStyleRef.current = next;
       const api = excalidrawAPIRef.current;
       if (api) {
         api.updateScene({
@@ -270,11 +286,19 @@ export default function App() {
   const handleSmartShape = useCallback(() => {
     const api = excalidrawAPIRef.current;
     if (!api) return;
+    // 再次点击 = 退出智能画笔，切回选择工具
+    if (smartShapeActive) {
+      setSmartShapeActive(false);
+      api.setActiveTool({ type: "selection" });
+      toast("已退出智能画笔");
+      return;
+    }
+    setSmartShapeActive(true);
     api.setActiveTool(
       { type: "custom", customType: SMART_SHAPE_TOOL, locked: true },
     );
     toast("智能画笔已启用：画出三角形、五角星等图形后松手自动识别");
-  }, [toast]);
+  }, [toast, smartShapeActive]);
 
   // Shift+X 激活智能画笔
   useEffect(() => {
@@ -392,7 +416,7 @@ export default function App() {
         return;
       }
 
-      const shape = buildShapeElement(points, api.getAppState());
+      const shape = buildShapeElement(points, api.getAppState(), drawStyleRef.current.roundness);
       const elements = api.getSceneElements();
       const withoutPreview = preview
         ? elements.filter((el) => el.id !== preview.id)
@@ -424,16 +448,19 @@ export default function App() {
       onClear: handleClear,
       onToggleTheme: handleToggleTheme,
       onSmartShape: handleSmartShape,
+      smartShapeActive,
       isDark,
     }),
-    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, isDark],
+    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, isDark],
   );
 
   return (
-    <div className="app" data-theme={isDark ? "dark" : "light"}>
+    <div className={`app ${smartShapeActive ? "smart-shape-active" : ""}`} data-theme={isDark ? "dark" : "light"}>
       <Toolbar {...actions} saving={saving} />
       <div className="workspace">
-        <StylePanel style={drawStyle} onChange={handleStyleChange} />
+        {smartShapeActive && (
+          <StylePanel style={drawStyle} onChange={handleStyleChange} />
+        )}
         <main className="canvas-wrap">
           {!ready && (
             <div className="loading">

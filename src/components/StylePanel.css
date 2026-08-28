@@ -153,6 +153,10 @@
   display: block;
 }
 
+.roundness-icon {
+  display: block;
+}
+
 /* —— 深色主题 —— */
 [data-theme="dark"] .style-panel {
   background: var(--painter-bg-dark);

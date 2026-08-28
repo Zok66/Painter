@@ -143,6 +143,19 @@
   background: #d9f5e2;
 }
 
+.btn-smartshape.active {
+  background: var(--painter-green);
+  border-color: var(--painter-green);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+
+.btn-smartshape.active .smartshape-kbd {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
 .smartshape-icon {
   display: inline-flex;
   align-items: center;

@@ -11,6 +11,7 @@ import { recognizeShape } from "./shapeRecognition";
 import type { Point } from "./shapeRecognition";
 
 type LocalPointTuple = [number, number];
+type RoundnessMode = "rounded" | "sharp";
 
 function randomId(): string {
   return (
@@ -62,11 +63,15 @@ function commonProps(
 export function buildShapeElement(
   points: Point[],
   appState: AppState,
+  roundnessMode: RoundnessMode = "sharp",
 ): ExcalidrawElement | null {
   const result = recognizeShape(points);
   if (result.type === "freedraw") return null;
 
   const [minX, minY, maxX, maxY] = result.bbox;
+
+  // 根据 roundnessMode 决定是否添加圆角
+  const lineRoundness = roundnessMode === "rounded" ? { type: 2 } : null;
 
   if (
     result.type === "rectangle" ||
@@ -88,14 +93,20 @@ export function buildShapeElement(
   if (result.type === "line" || result.type === "arrow") {
     const x = result.start.x;
     const y = result.start.y;
+    const endX = result.end.x;
+    const endY = result.end.y;
     const pts: LocalPointTuple[] = [
       [0, 0],
-      [result.end.x - x, result.end.y - y],
+      [endX - x, endY - y],
     ];
-    const base = commonProps(appState, result.type, x, y, 0, 0);
+    // 计算 line 的 bounding box 宽高
+    const w = Math.abs(endX - x);
+    const h = Math.abs(endY - y);
+    const base = commonProps(appState, result.type, Math.min(x, endX), Math.min(y, endY), w, h);
     if (result.type === "arrow") {
       return {
         ...base,
+        roundness: lineRoundness,
         points: pts,
         startBinding: null,
         endBinding: null,
@@ -106,6 +117,7 @@ export function buildShapeElement(
     }
     return {
       ...base,
+      roundness: lineRoundness,
       points: pts,
       startBinding: null,
       endBinding: null,
@@ -118,14 +130,18 @@ export function buildShapeElement(
   // triangle / star5 / trapezoid / pentagon / hexagon：闭合 line 多边形
   const polygon = result.polygon;
   if (polygon.length < 3) return null;
-  const x = polygon[0].x;
-  const y = polygon[0].y;
+  const polyX = polygon[0].x;
+  const polyY = polygon[0].y;
   const pts: LocalPointTuple[] = polygon.map(
-    (p) => [p.x - x, p.y - y] as LocalPointTuple,
+    (p) => [p.x - polyX, p.y - polyY] as LocalPointTuple,
   );
   pts.push([0, 0]);
+  // 使用 bbox 的宽高，确保 adjustRoughness 函数能正确应用 roughness
+  const w = maxX - minX;
+  const h = maxY - minY;
   return {
-    ...commonProps(appState, "line", x, y, 0, 0),
+    ...commonProps(appState, "line", minX, minY, w, h),
+    roundness: lineRoundness,
     points: pts,
     startBinding: null,
     endBinding: null,
