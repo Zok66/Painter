@@ -20,10 +20,10 @@ import "@excalidraw/excalidraw/index.css";
 import Toolbar from "./components/Toolbar";
 import StylePanel, {
   type DrawStyle,
+  type FillStyle,
   type StrokeStyle,
   type StrokeWidthKey,
   type Roughness,
-  type RoundnessMode,
 } from "./components/StylePanel";
 import { buildShapeElement, buildPreviewPolyline } from "./lib/buildShapeElement";
 import type { Point } from "./lib/shapeRecognition";
@@ -40,6 +40,7 @@ function isSmartShapeTool(tool: ActiveTool): boolean {
 const DEFAULT_DRAW_STYLE: DrawStyle = {
   strokeColor: "#1e1e1e",
   backgroundColor: "transparent",
+  fillStyle: "hachure",
   strokeWidthKey: "medium",
   strokeStyle: "solid",
   roughness: 1,
@@ -251,6 +252,7 @@ export default function App() {
     setDrawStyle({
       strokeColor: (appState.currentItemStrokeColor as string) || DEFAULT_DRAW_STYLE.strokeColor,
       backgroundColor: (appState.currentItemBackgroundColor as string) || DEFAULT_DRAW_STYLE.backgroundColor,
+      fillStyle: pick<FillStyle>(["hachure", "cross-hatch", "solid"], appState.currentItemFillStyle, DEFAULT_DRAW_STYLE.fillStyle),
       strokeWidthKey: pick<StrokeWidthKey>(["thin", "medium", "bold"], appState.currentItemStrokeWidthKey, DEFAULT_DRAW_STYLE.strokeWidthKey),
       strokeStyle: pick<StrokeStyle>(["solid", "dashed", "dotted"], appState.currentItemStrokeStyle, DEFAULT_DRAW_STYLE.strokeStyle),
       roughness: pick<Roughness>([0, 1, 2], appState.currentItemRoughness, DEFAULT_DRAW_STYLE.roughness),
@@ -272,6 +274,7 @@ export default function App() {
             ...api.getAppState(),
             currentItemStrokeColor: next.strokeColor as any,
             currentItemBackgroundColor: next.backgroundColor as any,
+            currentItemFillStyle: next.fillStyle as any,
             currentItemStrokeWidthKey: next.strokeWidthKey as any,
             currentItemStrokeStyle: next.strokeStyle as any,
             currentItemRoughness: next.roughness as any,
@@ -459,7 +462,11 @@ export default function App() {
       <Toolbar {...actions} saving={saving} />
       <div className="workspace">
         {smartShapeActive && (
-          <StylePanel style={drawStyle} onChange={handleStyleChange} />
+          <StylePanel
+            style={drawStyle}
+            onChange={handleStyleChange}
+            isDark={isDark}
+          />
         )}
         <main className="canvas-wrap">
           {!ready && (

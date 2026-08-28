@@ -1,395 +1,347 @@
+/* 高仿 Excalidraw Draw to shape 原生左侧属性面板 */
 .style-panel {
+  --island-bg-color: #ffffff;
+  --default-border-color: #f1f0ff;
+  --default-button-size: 2rem;
+  --default-icon-size: 1rem;
+  --border-radius-lg: 0.5rem;
+  --color-on-surface: #1b1b1f;
+  --color-surface-high: #f1f0ff;
+  --color-surface-primary-container: #e0dfff;
+  --color-on-primary-container: #030064;
+  --color-brand-hover: #22c55e;
+  --color-primary-darkest: #15803d;
+  --color-gray-20: #ebebeb;
+  --color-gray-60: #7a7a7a;
+  --popup-bg-color: var(--island-bg-color);
+  --shadow-island:
+    0px 0px 1px 0px rgba(0, 0, 0, 0.17),
+    0px 0px 3px 0px rgba(0, 0, 0, 0.08),
+    0px 7px 14px 0px rgba(0, 0, 0, 0.05);
+
   flex: 0 0 auto;
   width: 240px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 18px 14px;
-  background: var(--painter-bar);
-  border-right: 1px solid var(--painter-border);
-  box-shadow: var(--painter-shadow);
   overflow-y: auto;
   z-index: 4;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  background: var(--island-bg-color);
+  border-right: 1px solid var(--default-border-color);
+  box-shadow: var(--shadow-island);
+  font-family: inherit;
   user-select: none;
 }
 
-.style-section {
+/* —— 原生 selected-shape-actions —— */
+.selected-shape-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  row-gap: 0.75rem;
 }
 
-.style-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--painter-text);
+.selected-shape-actions h3,
+.selected-shape-actions legend {
+  margin: 0;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-on-surface);
+  font-weight: 400;
+  display: block;
 }
 
-/* —— 颜色色板 —— */
-.style-swatches {
-  display: flex;
+.selected-shape-actions legend {
+  padding: 0;
+}
+
+.selected-shape-actions fieldset {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+/* —— 原生 buttonList 单选按钮组 —— */
+.selected-shape-actions .buttonList {
   flex-wrap: wrap;
-  gap: 6px;
+  display: flex;
+  column-gap: 0.5rem;
+  row-gap: 0.5rem;
 }
 
-.style-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
-  transition: transform 0.1s ease, border-color 0.12s ease;
-  position: relative;
+.selected-shape-actions .buttonList label {
+  font-size: 0.75rem;
 }
 
-.style-swatch:hover {
-  transform: scale(1.08);
-}
-
-.style-swatch.active {
-  border-color: var(--painter-green);
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
-}
-
-/* 透明背景棋盘格 */
-.style-swatch.checkerboard {
-  background-color: #fff;
-  background-image:
-    linear-gradient(45deg, #ddd 25%, transparent 25%),
-    linear-gradient(-45deg, #ddd 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #ddd 75%),
-    linear-gradient(-45deg, transparent 75%, #ddd 75%);
-  background-size: 8px 8px;
-  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
-}
-
-.transparent-check {
+.selected-shape-actions .buttonList input[type="radio"] {
+  opacity: 0;
   position: absolute;
-  inset: 0;
+  pointer-events: none;
+}
+
+.selected-shape-actions .buttonList label {
   display: flex;
-  align-items: center;
   justify-content: center;
-}
-
-.transparent-check::after {
-  content: "";
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--painter-green);
-}
-
-/* —— 宽度 / 样式 / 线条风格 切换按钮 —— */
-.style-toggle-row {
-  display: flex;
-  gap: 8px;
-}
-
-.style-toggle {
-  flex: 1 1 0;
-  height: 36px;
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  background: var(--painter-bg);
-  border: 1px solid var(--painter-border);
-  border-radius: 8px;
-  cursor: pointer;
   padding: 0;
-  color: var(--painter-text-soft);
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  width: var(--default-button-size);
+  height: var(--default-button-size);
+  box-sizing: border-box;
+  border: 1px solid var(--default-border-color);
+  border-radius: var(--border-radius-lg);
+  cursor: pointer;
+  background: var(--island-bg-color);
+  color: var(--color-on-surface);
 }
 
-.style-toggle:hover {
-  background: var(--painter-hover);
+.selected-shape-actions .buttonList label svg {
+  width: var(--default-icon-size);
+  height: var(--default-icon-size);
 }
 
-.style-toggle.active {
-  background: var(--painter-green-light);
-  border-color: var(--painter-green);
-  color: var(--painter-green-dark);
+.selected-shape-actions .buttonList label:hover {
+  background: var(--color-surface-high);
+  border-color: var(--default-border-color);
+  color: var(--color-on-surface);
 }
 
-.stroke-width-line {
-  width: 22px;
-  border-radius: 999px;
-  background: var(--painter-text-soft);
+.selected-shape-actions .buttonList label.active,
+.selected-shape-actions .buttonList label.ToolIcon--checked {
+  background: var(--color-surface-primary-container);
+  border-color: var(--color-surface-primary-container);
 }
 
-/* active 时仍保持清晰的深灰预览线，只在按钮边框/背景上体现选中态 */
-.style-toggle.active .stroke-width-line {
-  background: var(--painter-text-soft);
+.selected-shape-actions .buttonList label.active:hover,
+.selected-shape-actions .buttonList label.ToolIcon--checked:hover {
+  background: var(--color-surface-primary-container);
 }
 
-.stroke-style-line {
-  width: 22px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--painter-text-soft);
+.selected-shape-actions .buttonList label.active svg,
+.selected-shape-actions .buttonList label.ToolIcon--checked svg {
+  color: var(--color-on-primary-container);
 }
 
-.stroke-style-dashed {
-  background: repeating-linear-gradient(
-    90deg,
-    currentColor 0px,
-    currentColor 5px,
-    transparent 5px,
-    transparent 9px
-  );
+.selected-shape-actions .buttonList label:focus-within {
+  outline: transparent;
+  box-shadow: 0 0 0 1px var(--color-brand-hover);
 }
 
-.stroke-style-dotted {
-  background: repeating-linear-gradient(
-    90deg,
-    currentColor 0px,
-    currentColor 2px,
-    transparent 2px,
-    transparent 6px
-  );
-}
-
-.roughness-icon {
-  display: block;
-}
-
-.roundness-icon {
-  display: block;
-}
-
-/* —— 颜色选择器：展开按钮 + 弹窗 —— */
+/* —— 原生颜色选择器行：常用色 + 分隔线 + 当前色 —— */
 .color-picker-section {
   position: relative;
 }
 
-.color-picker-row {
-  display: flex;
+.color-picker-container {
+  display: grid;
+  grid-template-columns: 1fr 20px 1.625rem;
+  padding: 0.25rem 0;
   align-items: center;
-  gap: 8px;
 }
 
-.color-picker-row .style-swatches {
-  flex: 1;
+.color-picker__top-picks {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.color-expand-btn {
-  width: 28px;
-  height: 24px;
-  display: inline-flex;
+.button-separator {
+  width: 1px;
+  height: 1rem;
+  background: var(--default-border-color);
+  margin: 0 auto;
+}
+
+.color-picker__button {
+  --radius: 4px;
+  --size: 1.375rem;
+  padding: 0;
+  margin: 0;
+  width: var(--size);
+  height: var(--size);
+  border: 0;
+  border-radius: var(--radius);
+  background-color: var(--swatch-color);
+  background-position: left center;
+  position: relative;
+  font-family: inherit;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.color-picker__button.has-outline {
+  box-shadow: 0 0 0 1px var(--color-gray-20);
+}
+
+.color-picker__button:hover:not(.active) {
+  box-shadow: inset 0 0 0 1px var(--color-brand-hover);
+}
+
+.color-picker__button:active {
+  box-shadow: 0 0 0 1px var(--color-brand-hover);
+}
+
+.color-picker__button .color-picker__button-outline {
+  display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: 1px solid var(--painter-border);
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--painter-text-soft);
-  transition: background 0.12s ease, color 0.12s ease;
-  flex-shrink: 0;
 }
 
-.color-expand-btn:hover {
-  background: var(--painter-hover);
-  color: var(--painter-text);
-}
-
-.color-expand-btn.active {
-  background: var(--painter-green-light);
-  border-color: var(--painter-green);
-  color: var(--painter-green-dark);
-}
-
-/* 弹出面板 */
-.color-popup {
+.color-picker__button.active:not(:active) .color-picker__button-outline {
   position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 6px;
-  z-index: 100;
-  background: var(--painter-bar);
-  border: 1px solid var(--painter-border);
-  border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
-  padding: 14px;
-  min-width: 280px;
+  --offset: -1px;
+  top: var(--offset);
+  left: var(--offset);
+  right: var(--offset);
+  bottom: var(--offset);
+  box-shadow: 0 0 0 1px var(--color-primary-darkest);
+  z-index: 1;
+  border-radius: var(--radius);
 }
 
-/* 颜色网格 */
-.color-picker-grid {
+.color-picker__button:focus-visible {
+  outline: none;
+}
+
+.color-picker__button:focus-visible::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  bottom: -4px;
+  left: -4px;
+  border: 3px solid var(--color-brand-hover);
+  border-radius: calc(var(--radius) + 1px);
+}
+
+.color-picker__button:focus-visible.active .color-picker__button-outline {
+  display: none;
+}
+
+.color-picker__button--large {
+  --radius: 6px;
+  width: 1.875rem;
+  height: 1.875rem;
+}
+
+.color-picker__button.is-transparent {
+  background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYGAQYcAP3uCTZhw1gGGYhAGBZIA/nYDCgBDAm9BGDWAAJyRCgLaBCAAAgXwixzAS0pgAAAABJRU5ErkJggg==);
+  background-color: var(--island-bg-color);
+}
+
+/* —— 颜色弹出面板 —— */
+.color-picker-popup {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  z-index: 100;
+  background: var(--popup-bg-color);
+  border: 0 solid rgba(255, 255, 255, 0.25);
+  box-shadow:
+    0 0 1px 0 rgba(0, 0, 0, 0.17),
+    0 0 3px 0 rgba(0, 0, 0, 0.08),
+    0 7px 14px 0 rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  padding: 0.5rem;
+  width: 194px;
+}
+
+.color-picker-content {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0.75rem;
+  outline: none;
 }
 
-.grid-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--painter-text);
-}
-
-.grid-row {
-  display: flex;
-  gap: 3px;
-}
-
-.grid-swatch {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  border: 2px solid transparent;
-  cursor: pointer;
+.color-picker-content--default {
   padding: 0;
-  transition: transform 0.08s ease, border-color 0.1s ease;
+  display: grid;
+  grid-template-columns: repeat(5, 1.875rem);
+  grid-gap: 0.25rem;
+  border-radius: 4px;
 }
 
-.grid-swatch:hover {
-  transform: scale(1.15);
-  z-index: 2;
+.picker-heading {
+  font-size: 0.6875rem;
+  color: var(--color-gray-60);
+  margin: 0;
 }
 
-.grid-swatch.active {
-  border-color: var(--painter-text);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+.shade-list {
+  display: grid;
+  grid-template-columns: repeat(5, 1.875rem);
+  grid-gap: 0.25rem;
 }
 
-/* 当前颜色预览 */
 .grid-current {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--painter-text-soft);
-  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--color-gray-60);
 }
 
 .current-swatch {
   display: inline-block;
-  width: 20px;
-  height: 20px;
+  width: 1rem;
+  height: 1rem;
   border-radius: 4px;
-  border: 1px solid var(--painter-border);
+  border: 1px solid var(--default-border-color);
 }
 
-.current-swatch.checkerboard {
-  background-color: #fff;
-  background-image:
-    linear-gradient(45deg, #ddd 25%, transparent 25%),
-    linear-gradient(-45deg, #ddd 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #ddd 75%),
-    linear-gradient(-45deg, transparent 75%, #ddd 75%);
-  background-size: 6px 6px;
-  background-position: 0 0, 0 3px, 3px -3px, -3px 0;
+.current-swatch.is-transparent {
+  background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYGAQYcAP3uCTZhw1gGGYhAGBZIA/nYDCgBDAm9BGDWAAJyRCgLaBCAAAgXwixzAS0pgAAAABJRU5ErkJggg==);
+  background-color: var(--island-bg-color);
 }
 
 .current-hex {
   font-family: monospace;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
-.grid-shade-hint {
-  font-size: 11px;
-  color: var(--painter-text-soft);
-  opacity: 0.7;
-  text-align: center;
-}
-
-/* 十六进制输入 */
-.grid-hex {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.grid-hex > span {
-  font-size: 12px;
-  color: var(--painter-text-soft);
-}
-
-.hex-input-wrap {
+.color-picker__input-label {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: var(--painter-bg);
-  border: 1px solid var(--painter-border);
-  border-radius: 8px;
-  padding: 4px 10px;
+  border: 1px solid var(--default-border-color);
+  border-radius: var(--border-radius-lg);
+  padding: 0 0.5rem;
+  box-sizing: border-box;
 }
 
-.hex-prefix {
-  color: var(--painter-text-soft);
+.color-picker__input-label:focus-within {
+  box-shadow: 0 0 0 1px var(--color-primary-darkest);
+}
+
+.color-picker__input-hash {
+  padding: 0 0.25rem;
+  color: var(--color-gray-60);
   font-family: monospace;
-  font-size: 13px;
+  font-size: 0.75rem;
 }
 
-.hex-input {
-  flex: 1;
-  border: none;
-  outline: none;
+.color-picker-input {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  font-size: 0.75rem;
+  font-family: inherit;
   background: transparent;
-  font-family: monospace;
-  font-size: 13px;
-  color: var(--painter-text);
+  color: var(--color-on-surface);
+  border: 0;
+  outline: none;
+  height: 1.75rem;
+  padding: 0.25rem 0;
   text-transform: uppercase;
-}
-
-.grid-tip {
-  font-size: 11px;
-  color: var(--painter-text-soft);
-  opacity: 0.6;
-  text-align: center;
-  font-style: italic;
 }
 
 /* —— 深色主题 —— */
 [data-theme="dark"] .style-panel {
-  background: var(--painter-bg-dark);
-  border-right-color: var(--painter-border-dark);
-}
-
-[data-theme="dark"] .style-toggle {
-  background: var(--painter-hover-dark);
-  border-color: var(--painter-border-dark);
-  color: #a8b4ad;
-}
-
-[data-theme="dark"] .style-toggle:hover {
-  background: #333;
-}
-
-[data-theme="dark"] .style-toggle.active {
-  background: rgba(34, 197, 94, 0.18);
-  border-color: var(--painter-green);
-  color: var(--painter-green);
-}
-
-[data-theme="dark"] .style-swatch.checkerboard {
-  background-color: #2a2a2a;
-  background-image:
-    linear-gradient(45deg, #444 25%, transparent 25%),
-    linear-gradient(-45deg, #444 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #444 75%),
-    linear-gradient(-45deg, transparent 75%, #444 75%);
-}
-
-[data-theme="dark"] .color-expand-btn {
-  border-color: #444;
-  color: #a8b4ad;
-}
-
-[data-theme="dark"] .color-expand-btn:hover {
-  background: #333;
-}
-
-[data-theme="dark"] .color-popup {
-  background: #2a2a2a;
-  border-color: #444;
-}
-
-[data-theme="dark"] .hex-input-wrap {
-  background: #333;
-  border-color: #444;
-}
-
-[data-theme="dark"] .current-swatch {
-  border-color: #444;
+  --island-bg-color: #232329;
+  --default-border-color: #2e2d39;
+  --color-on-surface: #e3e3e8;
+  --color-surface-high: #2e2d39;
+  --color-surface-primary-container: #403e6a;
+  --color-on-primary-container: #e0dfff;
+  --color-brand-hover: #34d97a;
+  --color-primary-darkest: #16a34a;
+  --color-gray-20: #3d3d46;
+  --color-gray-60: #9a9aa5;
 }
