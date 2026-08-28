@@ -8,6 +8,7 @@
 }
 
 .workspace {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
@@ -83,8 +84,7 @@
   }
 }
 
-/* 智能画笔激活时:隐藏原生 Excalidraw 左侧工具面板,只保留自研 StylePanel */
-.app.smart-shape-active .excalidraw .App-menu_top__left,
+/* 智能画笔激活时:只隐藏原生 Excalidraw 左侧属性面板,保留左上角菜单(三条杠) */
 .app.smart-shape-active .excalidraw .selected-shape-actions-container {
   display: none !important;
   opacity: 0 !important;

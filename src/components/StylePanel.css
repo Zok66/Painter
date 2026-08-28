@@ -19,14 +19,19 @@
     0px 0px 3px 0px rgba(0, 0, 0, 0.08),
     0px 7px 14px 0px rgba(0, 0, 0, 0.05);
 
-  flex: 0 0 auto;
-  width: 240px;
+  position: absolute;
+  top: 3.75rem;
+  left: 0.75rem;
+  width: fit-content;
+  min-width: 13.5rem;
+  max-height: calc(100% - 4.5rem);
   overflow-y: auto;
-  z-index: 4;
+  z-index: 20;
   box-sizing: border-box;
   padding: 0.75rem;
   background: var(--island-bg-color);
-  border-right: 1px solid var(--default-border-color);
+  border: 0;
+  border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-island);
   font-family: inherit;
   user-select: none;
