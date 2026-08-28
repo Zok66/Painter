@@ -148,6 +148,9 @@ export function buildFreedrawPreview(
   const base = commonProps(appState, "freedraw", x, y, 0, 0);
   return {
     ...base,
+    // 用 STROKE_WIDTH 的真实值（而非 FREEDRAW_STROKE_WIDTH 的一半），
+    // 让绘制中的浅色轨迹预览与松手后实际生成的形状线粗细完全一致。
+    strokeWidth: getStrokeWidthByKey("line", appState.currentItemStrokeWidthKey),
     id,
     type: "freedraw",
     points: points.map(

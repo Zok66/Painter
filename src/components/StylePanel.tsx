@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import "./StylePanel.css";
 
-export type StrokeWidthKey = "thin" | "regular" | "bold";
+export type StrokeWidthKey = "thin" | "medium" | "bold";
 export type StrokeStyle = "solid" | "dashed" | "dotted";
 export type Roughness = 0 | 1 | 2;
 
@@ -31,10 +31,12 @@ const BACKGROUND_COLORS = [
   { value: "#ffffff", label: "白色" },
 ];
 
+// height 严格等于 Excalidraw STROKE_WIDTH 的真实像素值，
+// 保证面板预览线与实际生成图形描边完全一致。
 const STROKE_WIDTHS: { key: StrokeWidthKey; label: string; height: number }[] = [
-  { key: "thin", label: "细", height: 2 },
-  { key: "regular", label: "中", height: 4 },
-  { key: "bold", label: "粗", height: 6 },
+  { key: "thin", label: "细", height: 1 },
+  { key: "medium", label: "中", height: 2 },
+  { key: "bold", label: "粗", height: 4 },
 ];
 
 const STROKE_STYLES: { key: StrokeStyle; label: string }[] = [

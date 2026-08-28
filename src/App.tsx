@@ -37,7 +37,7 @@ const SMART_SHAPE_TOOL = "smart-shape";
 const DEFAULT_DRAW_STYLE: DrawStyle = {
   strokeColor: "#1e1e1e",
   backgroundColor: "transparent",
-  strokeWidthKey: "regular",
+  strokeWidthKey: "medium",
   strokeStyle: "solid",
   roughness: 1,
 };
@@ -233,7 +233,7 @@ export default function App() {
     const api = excalidrawAPIRef.current;
     if (!api || !ready || styleReady) return;
     const appState = api.getAppState();
-    const pick = <T extends string>(
+    const pick = <T,>(
       allowed: readonly T[],
       value: unknown,
       fallback: T,
@@ -241,7 +241,7 @@ export default function App() {
     setDrawStyle({
       strokeColor: (appState.currentItemStrokeColor as string) || DEFAULT_DRAW_STYLE.strokeColor,
       backgroundColor: (appState.currentItemBackgroundColor as string) || DEFAULT_DRAW_STYLE.backgroundColor,
-      strokeWidthKey: pick<StrokeWidthKey>(["thin", "regular", "bold"], appState.currentItemStrokeWidthKey, DEFAULT_DRAW_STYLE.strokeWidthKey),
+      strokeWidthKey: pick<StrokeWidthKey>(["thin", "medium", "bold"], appState.currentItemStrokeWidthKey, DEFAULT_DRAW_STYLE.strokeWidthKey),
       strokeStyle: pick<StrokeStyle>(["solid", "dashed", "dotted"], appState.currentItemStrokeStyle, DEFAULT_DRAW_STYLE.strokeStyle),
       roughness: pick<Roughness>([0, 1, 2], appState.currentItemRoughness, DEFAULT_DRAW_STYLE.roughness),
     });
