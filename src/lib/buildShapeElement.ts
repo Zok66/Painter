@@ -87,6 +87,8 @@ export function buildShapeElement(
         maxX - minX,
         maxY - minY,
       ),
+      // 矩形/菱形需要应用圆角；椭圆没有圆角概念，保持 null
+      roundness: result.type === "ellipse" ? null : lineRoundness,
     } as unknown as ExcalidrawElement;
   }
 

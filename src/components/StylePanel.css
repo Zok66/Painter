@@ -350,3 +350,9 @@
   --color-gray-20: #3d3d46;
   --color-gray-60: #9a9aa5;
 }
+
+/* 三条杠菜单展开时，把悬浮面板压到 Excalidraw UI 层之下，
+   避免自定义面板挡住原生菜单弹层 */
+.workspace:has(.main-menu-trigger[data-state="open"]) .style-panel {
+  z-index: 2;
+}
