@@ -4,7 +4,7 @@
 import { getStrokeWidthByKey } from "@excalidraw/excalidraw";
 import type {
   ExcalidrawElement,
-  ExcalidrawFreeDrawElement,
+  ExcalidrawLineElement,
 } from "@excalidraw/excalidraw/element/types";
 import type { AppState } from "@excalidraw/excalidraw/types";
 import { recognizeShape } from "./shapeRecognition";
@@ -135,30 +135,31 @@ export function buildShapeElement(
   } as unknown as ExcalidrawElement;
 }
 
-// 绘制过程中的轨迹预览：一个半透明的 freedraw 元素，
-// 通过 updateScene 加入场景渲染，松手时再替换为最终形状。
-export function buildFreedrawPreview(
+// 绘制过程中的轨迹预览：用普通的 line 折线，不用 freedraw。
+// freedraw 笔触会按 pressure 加粗，导致同 strokeWidth 下比最终生成的 line 粗很多。
+// line 折线的渲染方式和最终形状完全一致，所以预览粗细等于实际生成粗细。
+export function buildPreviewPolyline(
   points: Point[],
   appState: AppState,
   id: string,
   opacity = 45,
-): ExcalidrawFreeDrawElement {
+): ExcalidrawLineElement {
   const x = points[0].x;
   const y = points[0].y;
-  const base = commonProps(appState, "freedraw", x, y, 0, 0);
+  const pts: LocalPointTuple[] = points.map(
+    (p) => [p.x - x, p.y - y] as LocalPointTuple,
+  );
+  const base = commonProps(appState, "line", x, y, 0, 0);
   return {
     ...base,
-    // 用 STROKE_WIDTH 的真实值（而非 FREEDRAW_STROKE_WIDTH 的一半），
-    // 让绘制中的浅色轨迹预览与松手后实际生成的形状线粗细完全一致。
-    strokeWidth: getStrokeWidthByKey("line", appState.currentItemStrokeWidthKey),
     id,
-    type: "freedraw",
-    points: points.map(
-      (p) => [p.x - x, p.y - y] as LocalPointTuple,
-    ),
-    pressures: points.map(() => 0.5),
-    simulatePressure: false,
-    strokeOptions: { variability: "variable", streamline: 0.5 },
+    type: "line",
+    points: pts,
+    startBinding: null,
+    endBinding: null,
+    startArrowhead: null,
+    endArrowhead: null,
+    polygon: false,
     opacity,
-  } as unknown as ExcalidrawFreeDrawElement;
+  } as unknown as ExcalidrawLineElement;
 }

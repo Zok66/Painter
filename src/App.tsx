@@ -15,10 +15,7 @@ import type {
   ActiveTool,
   PointerDownState,
 } from "@excalidraw/excalidraw/types";
-import type {
-  ExcalidrawElement,
-  ExcalidrawFreeDrawElement,
-} from "@excalidraw/excalidraw/element/types";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 import Toolbar from "./components/Toolbar";
 import StylePanel, {
@@ -27,7 +24,7 @@ import StylePanel, {
   type StrokeWidthKey,
   type Roughness,
 } from "./components/StylePanel";
-import { buildShapeElement, buildFreedrawPreview } from "./lib/buildShapeElement";
+import { buildShapeElement, buildPreviewPolyline } from "./lib/buildShapeElement";
 import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
 
@@ -74,7 +71,7 @@ export default function App() {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const smartShapePointsRef = useRef<Point[]>([]);
   const smartShapeDrawingRef = useRef(false);
-  const smartShapePreviewRef = useRef<ExcalidrawFreeDrawElement | null>(null);
+  const smartShapePreviewRef = useRef<ExcalidrawElement | null>(null);
   const smartShapePendingPointsRef = useRef<Point[]>([]);
   const smartShapeRafRef = useRef<number | null>(null);
 
@@ -309,7 +306,7 @@ export default function App() {
           const previewId = `smart-preview-${Date.now()}-${Math.random()
             .toString(36)
             .slice(2, 8)}`;
-          const preview = buildFreedrawPreview(
+          const preview = buildPreviewPolyline(
             points,
             api.getAppState(),
             previewId,
@@ -343,7 +340,7 @@ export default function App() {
             const api = excalidrawAPIRef.current;
             const preview = smartShapePreviewRef.current;
             if (!api || !preview) return;
-            const next = buildFreedrawPreview(
+            const next = buildPreviewPolyline(
               smartShapePendingPointsRef.current,
               api.getAppState(),
               preview.id,
