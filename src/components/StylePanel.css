@@ -113,15 +113,20 @@
 
 .stroke-width-line {
   width: 22px;
-  border-radius: 1px;
-  background: currentColor;
+  border-radius: 999px;
+  background: var(--painter-text-soft);
+}
+
+/* active 时仍保持清晰的深灰预览线，只在按钮边框/背景上体现选中态 */
+.style-toggle.active .stroke-width-line {
+  background: var(--painter-text-soft);
 }
 
 .stroke-style-line {
   width: 22px;
   height: 2px;
   border-radius: 1px;
-  background: currentColor;
+  background: var(--painter-text-soft);
 }
 
 .stroke-style-dashed {

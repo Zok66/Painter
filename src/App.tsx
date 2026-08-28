@@ -233,18 +233,17 @@ export default function App() {
     const api = excalidrawAPIRef.current;
     if (!api || !ready || styleReady) return;
     const appState = api.getAppState();
+    const pick = <T extends string>(
+      allowed: readonly T[],
+      value: unknown,
+      fallback: T,
+    ): T => (allowed.includes(value as T) ? (value as T) : fallback);
     setDrawStyle({
       strokeColor: (appState.currentItemStrokeColor as string) || DEFAULT_DRAW_STYLE.strokeColor,
       backgroundColor: (appState.currentItemBackgroundColor as string) || DEFAULT_DRAW_STYLE.backgroundColor,
-      strokeWidthKey:
-        ((appState.currentItemStrokeWidthKey as string) as StrokeWidthKey) ||
-        DEFAULT_DRAW_STYLE.strokeWidthKey,
-      strokeStyle:
-        ((appState.currentItemStrokeStyle as string) as StrokeStyle) ||
-        DEFAULT_DRAW_STYLE.strokeStyle,
-      roughness:
-        (Number(appState.currentItemRoughness) as Roughness) ??
-        DEFAULT_DRAW_STYLE.roughness,
+      strokeWidthKey: pick<StrokeWidthKey>(["thin", "regular", "bold"], appState.currentItemStrokeWidthKey, DEFAULT_DRAW_STYLE.strokeWidthKey),
+      strokeStyle: pick<StrokeStyle>(["solid", "dashed", "dotted"], appState.currentItemStrokeStyle, DEFAULT_DRAW_STYLE.strokeStyle),
+      roughness: pick<Roughness>([0, 1, 2], appState.currentItemRoughness, DEFAULT_DRAW_STYLE.roughness),
     });
     setStyleReady(true);
   }, [ready, styleReady]);
