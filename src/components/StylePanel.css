@@ -1,6 +1,6 @@
 .style-panel {
   flex: 0 0 auto;
-  width: 220px;
+  width: 240px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -29,13 +29,13 @@
 .style-swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
 }
 
 .style-swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   border: 2px solid transparent;
   cursor: pointer;
   padding: 0;
@@ -157,6 +157,189 @@
   display: block;
 }
 
+/* —— 颜色选择器：展开按钮 + 弹窗 —— */
+.color-picker-section {
+  position: relative;
+}
+
+.color-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-picker-row .style-swatches {
+  flex: 1;
+}
+
+.color-expand-btn {
+  width: 28px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--painter-border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--painter-text-soft);
+  transition: background 0.12s ease, color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.color-expand-btn:hover {
+  background: var(--painter-hover);
+  color: var(--painter-text);
+}
+
+.color-expand-btn.active {
+  background: var(--painter-green-light);
+  border-color: var(--painter-green);
+  color: var(--painter-green-dark);
+}
+
+/* 弹出面板 */
+.color-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  z-index: 100;
+  background: var(--painter-bar);
+  border: 1px solid var(--painter-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  padding: 14px;
+  min-width: 280px;
+}
+
+/* 颜色网格 */
+.color-picker-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.grid-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--painter-text);
+}
+
+.grid-row {
+  display: flex;
+  gap: 3px;
+}
+
+.grid-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.08s ease, border-color 0.1s ease;
+}
+
+.grid-swatch:hover {
+  transform: scale(1.15);
+  z-index: 2;
+}
+
+.grid-swatch.active {
+  border-color: var(--painter-text);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+/* 当前颜色预览 */
+.grid-current {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--painter-text-soft);
+  margin-top: 4px;
+}
+
+.current-swatch {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--painter-border);
+}
+
+.current-swatch.checkerboard {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #ddd 25%, transparent 25%),
+    linear-gradient(-45deg, #ddd 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ddd 75%),
+    linear-gradient(-45deg, transparent 75%, #ddd 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 0 3px, 3px -3px, -3px 0;
+}
+
+.current-hex {
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.grid-shade-hint {
+  font-size: 11px;
+  color: var(--painter-text-soft);
+  opacity: 0.7;
+  text-align: center;
+}
+
+/* 十六进制输入 */
+.grid-hex {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.grid-hex > span {
+  font-size: 12px;
+  color: var(--painter-text-soft);
+}
+
+.hex-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--painter-bg);
+  border: 1px solid var(--painter-border);
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+
+.hex-prefix {
+  color: var(--painter-text-soft);
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.hex-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--painter-text);
+  text-transform: uppercase;
+}
+
+.grid-tip {
+  font-size: 11px;
+  color: var(--painter-text-soft);
+  opacity: 0.6;
+  text-align: center;
+  font-style: italic;
+}
+
 /* —— 深色主题 —— */
 [data-theme="dark"] .style-panel {
   background: var(--painter-bg-dark);
@@ -186,4 +369,27 @@
     linear-gradient(-45deg, #444 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, #444 75%),
     linear-gradient(-45deg, transparent 75%, #444 75%);
+}
+
+[data-theme="dark"] .color-expand-btn {
+  border-color: #444;
+  color: #a8b4ad;
+}
+
+[data-theme="dark"] .color-expand-btn:hover {
+  background: #333;
+}
+
+[data-theme="dark"] .color-popup {
+  background: #2a2a2a;
+  border-color: #444;
+}
+
+[data-theme="dark"] .hex-input-wrap {
+  background: #333;
+  border-color: #444;
+}
+
+[data-theme="dark"] .current-swatch {
+  border-color: #444;
 }
