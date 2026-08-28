@@ -82,11 +82,18 @@ export default function Toolbar(props: ToolbarProps) {
           导出 SVG
         </button>
         <button
-          className="btn btn-accent"
+          className="btn btn-smartshape"
           onClick={onSmartShape}
-          title="智能画笔：手绘三角形、五角星等图形，松手自动识别"
+          title="智能画笔：手绘三角形、五角星等图形，松手自动识别（Shift+X）"
         >
-          智能画笔
+          <span className="smartshape-icon" aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2l1.5 5.5L19 9l-5.5 2L12 16l-1.5-5L5 9l5.5-1.5L12 2z" />
+              <path d="M5 16.5l1 3.5-3.5-1 2.5-2.5zM19 16.5l-1 3.5 3.5-1-2.5-2.5z" opacity="0.6" />
+            </svg>
+          </span>
+          <span className="smartshape-text">智能画笔</span>
+          <span className="smartshape-kbd">Shift+X</span>
         </button>
 
         <div className="divider" />

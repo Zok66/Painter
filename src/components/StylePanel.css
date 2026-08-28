@@ -1,0 +1,180 @@
+.style-panel {
+  flex: 0 0 auto;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 14px;
+  background: var(--painter-bar);
+  border-right: 1px solid var(--painter-border);
+  box-shadow: var(--painter-shadow);
+  overflow-y: auto;
+  z-index: 4;
+  user-select: none;
+}
+
+.style-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.style-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--painter-text);
+}
+
+/* —— 颜色色板 —— */
+.style-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.style-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease, border-color 0.12s ease;
+  position: relative;
+}
+
+.style-swatch:hover {
+  transform: scale(1.08);
+}
+
+.style-swatch.active {
+  border-color: var(--painter-green);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+/* 透明背景棋盘格 */
+.style-swatch.checkerboard {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #ddd 25%, transparent 25%),
+    linear-gradient(-45deg, #ddd 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ddd 75%),
+    linear-gradient(-45deg, transparent 75%, #ddd 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+.transparent-check {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transparent-check::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--painter-green);
+}
+
+/* —— 宽度 / 样式 / 线条风格 切换按钮 —— */
+.style-toggle-row {
+  display: flex;
+  gap: 8px;
+}
+
+.style-toggle {
+  flex: 1 1 0;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--painter-bg);
+  border: 1px solid var(--painter-border);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+  color: var(--painter-text-soft);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.style-toggle:hover {
+  background: var(--painter-hover);
+}
+
+.style-toggle.active {
+  background: var(--painter-green-light);
+  border-color: var(--painter-green);
+  color: var(--painter-green-dark);
+}
+
+.stroke-width-line {
+  width: 22px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.stroke-style-line {
+  width: 22px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.stroke-style-dashed {
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0px,
+    currentColor 5px,
+    transparent 5px,
+    transparent 9px
+  );
+}
+
+.stroke-style-dotted {
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0px,
+    currentColor 2px,
+    transparent 2px,
+    transparent 6px
+  );
+}
+
+.roughness-icon {
+  display: block;
+}
+
+/* —— 深色主题 —— */
+[data-theme="dark"] .style-panel {
+  background: var(--painter-bg-dark);
+  border-right-color: var(--painter-border-dark);
+}
+
+[data-theme="dark"] .style-toggle {
+  background: var(--painter-hover-dark);
+  border-color: var(--painter-border-dark);
+  color: #a8b4ad;
+}
+
+[data-theme="dark"] .style-toggle:hover {
+  background: #333;
+}
+
+[data-theme="dark"] .style-toggle.active {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: var(--painter-green);
+  color: var(--painter-green);
+}
+
+[data-theme="dark"] .style-swatch.checkerboard {
+  background-color: #2a2a2a;
+  background-image:
+    linear-gradient(45deg, #444 25%, transparent 25%),
+    linear-gradient(-45deg, #444 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #444 75%),
+    linear-gradient(-45deg, transparent 75%, #444 75%);
+}

@@ -21,12 +21,26 @@ import type {
 } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 import Toolbar from "./components/Toolbar";
+import StylePanel, {
+  type DrawStyle,
+  type StrokeStyle,
+  type StrokeWidthKey,
+  type Roughness,
+} from "./components/StylePanel";
 import { buildShapeElement, buildFreedrawPreview } from "./lib/buildShapeElement";
 import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
 
 const STORAGE_KEY = "painter:scene:v1";
 const SMART_SHAPE_TOOL = "smart-shape";
+
+const DEFAULT_DRAW_STYLE: DrawStyle = {
+  strokeColor: "#1e1e1e",
+  backgroundColor: "transparent",
+  strokeWidthKey: "regular",
+  strokeStyle: "solid",
+  roughness: 1,
+};
 
 /** 触发浏览器下载 */
 function download(blob: Blob, filename: string) {
@@ -54,6 +68,8 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [initialData, setInitialData] = useState<any>(null);
   const [ready, setReady] = useState(false);
+  const [drawStyle, setDrawStyle] = useState<DrawStyle>(DEFAULT_DRAW_STYLE);
+  const [styleReady, setStyleReady] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const smartShapePointsRef = useRef<Point[]>([]);
@@ -212,6 +228,48 @@ export default function App() {
   // 切换主题
   const handleToggleTheme = useCallback(() => setIsDark((v) => !v), []);
 
+  // 从 Excalidraw 当前 appState 同步风格面板初始值（支持 localStorage 恢复）
+  useEffect(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api || !ready || styleReady) return;
+    const appState = api.getAppState();
+    setDrawStyle({
+      strokeColor: (appState.currentItemStrokeColor as string) || DEFAULT_DRAW_STYLE.strokeColor,
+      backgroundColor: (appState.currentItemBackgroundColor as string) || DEFAULT_DRAW_STYLE.backgroundColor,
+      strokeWidthKey:
+        ((appState.currentItemStrokeWidthKey as string) as StrokeWidthKey) ||
+        DEFAULT_DRAW_STYLE.strokeWidthKey,
+      strokeStyle:
+        ((appState.currentItemStrokeStyle as string) as StrokeStyle) ||
+        DEFAULT_DRAW_STYLE.strokeStyle,
+      roughness:
+        (Number(appState.currentItemRoughness) as Roughness) ??
+        DEFAULT_DRAW_STYLE.roughness,
+    });
+    setStyleReady(true);
+  }, [ready, styleReady]);
+
+  // 风格面板变动时回写 Excalidraw appState
+  const handleStyleChange = useCallback((patch: Partial<DrawStyle>) => {
+    setDrawStyle((prev) => {
+      const next = { ...prev, ...patch };
+      const api = excalidrawAPIRef.current;
+      if (api) {
+        api.updateScene({
+          appState: {
+            ...api.getAppState(),
+            currentItemStrokeColor: next.strokeColor as any,
+            currentItemBackgroundColor: next.backgroundColor as any,
+            currentItemStrokeWidthKey: next.strokeWidthKey as any,
+            currentItemStrokeStyle: next.strokeStyle as any,
+            currentItemRoughness: next.roughness as any,
+          },
+        });
+      }
+      return next;
+    });
+  }, []);
+
   // 启用智能画笔：手绘后松手自动识别为形状
   const handleSmartShape = useCallback(() => {
     const api = excalidrawAPIRef.current;
@@ -221,6 +279,18 @@ export default function App() {
     );
     toast("智能画笔已启用：画出三角形、五角星等图形后松手自动识别");
   }, [toast]);
+
+  // Shift+X 激活智能画笔
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.shiftKey && (e.key === "X" || e.key === "x")) {
+        e.preventDefault();
+        handleSmartShape();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleSmartShape]);
 
   // 自研智能画笔：完全自己采集轨迹，不经过 Excalidraw 的 freedraw/autoshape
   const handlePointerDown = useCallback(
@@ -366,14 +436,16 @@ export default function App() {
   return (
     <div className="app" data-theme={isDark ? "dark" : "light"}>
       <Toolbar {...actions} saving={saving} />
-      <main className="canvas-wrap">
-        {!ready && (
-          <div className="loading">
-            <span className="spinner" />
-            画板加载中…
-          </div>
-        )}
-        <Excalidraw
+      <div className="workspace">
+        <StylePanel style={drawStyle} onChange={handleStyleChange} />
+        <main className="canvas-wrap">
+          {!ready && (
+            <div className="loading">
+              <span className="spinner" />
+              画板加载中…
+            </div>
+          )}
+          <Excalidraw
           onExcalidrawAPI={(api) => {
             excalidrawAPIRef.current = api;
             setExcalidrawAPI(api);
@@ -401,5 +473,6 @@ export default function App() {
         />
       </main>
     </div>
+  </div>
   );
 }
