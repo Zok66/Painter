@@ -41,6 +41,31 @@ function PenSwatch({ type }: { type: PenType }) {
           />
         </svg>
       );
+    case "crayon":
+      return (
+        <svg width="48" height="18" viewBox="0 0 48 18" aria-hidden>
+          {/* 两层错位断续粗线，模拟蜡质覆盖的斑驳留白 */}
+          <path
+            d="M3 11C10 4.5 16 14 24 8.5 32 3.5 40 10 45 7.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="5.2"
+            strokeLinecap="round"
+            strokeDasharray="8 2.4"
+            opacity="0.85"
+          />
+          <path
+            d="M3 11C10 4.5 16 14 24 8.5 32 3.5 40 10 45 7.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="5.2"
+            strokeLinecap="round"
+            strokeDasharray="2.6 7.8"
+            strokeDashoffset="5.4"
+            opacity="0.5"
+          />
+        </svg>
+      );
     case "highlighter":
       return (
         <svg width="48" height="18" viewBox="0 0 48 18" aria-hidden>
@@ -94,7 +119,7 @@ export default function PenMenu({ activePen, onSelectPen }: PenMenuProps) {
         title={
           activePen
             ? `当前：${activePreset?.name}（点击可切换笔型）`
-            : "选择圆珠笔 / 钢笔 / 铅笔 / 荧光笔"
+            : "选择圆珠笔 / 钢笔 / 铅笔 / 蜡笔 / 荧光笔"
         }
         aria-haspopup="menu"
         aria-expanded={open}

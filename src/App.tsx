@@ -370,7 +370,7 @@ export default function App() {
         colorChanged = true;
       }
       toast(
-        `已切换到${preset.name}${colorChanged ? "（并自动换成荧光色）" : ""}：在画布上直接书写`,
+        `已切换到${preset.name}${colorChanged ? "（并自动换成推荐色）" : ""}：在画布上直接书写`,
       );
     },
     [toast],

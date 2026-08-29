@@ -20,7 +20,12 @@ import { union as polygonUnion } from "polygon-clipping";
 import type { Polygon } from "polygon-clipping";
 import type { Point } from "./shapeRecognition";
 
-export type PenType = "ballpoint" | "fountain" | "pencil" | "highlighter";
+export type PenType =
+  | "ballpoint"
+  | "fountain"
+  | "pencil"
+  | "crayon"
+  | "highlighter";
 
 export interface PenPreset {
   key: PenType;
@@ -76,6 +81,17 @@ export const PEN_PRESETS: Record<PenType, PenPreset> = {
     streamline: 0.24,
     opacity: 72,
   },
+  crayon: {
+    key: "crayon",
+    name: "蜡笔",
+    desc: "蜡质颗粒白斑，边缘碎裂",
+    strokeWidth: 13,
+    variability: "constant",
+    simulatePressure: false,
+    streamline: 0.5,
+    opacity: 95,
+    suggestColor: "#e03131",
+  },
   highlighter: {
     key: "highlighter",
     name: "荧光笔",
@@ -89,7 +105,13 @@ export const PEN_PRESETS: Record<PenType, PenPreset> = {
   },
 };
 
-export const PEN_ORDER: PenType[] = ["ballpoint", "fountain", "pencil", "highlighter"];
+export const PEN_ORDER: PenType[] = [
+  "ballpoint",
+  "fountain",
+  "pencil",
+  "crayon",
+  "highlighter",
+];
 
 /** 默认墨色：用户没主动改过颜色时才允许自动换色 */
 const DEFAULT_INK_COLORS = new Set([
@@ -141,6 +163,18 @@ export function computePressures(points: Point[], pen: PenPreset): number[] {
       const noise = hashNoise(Math.floor(i / 3)) * 0.6 + hashNoise(i) * 0.4;
       const p = 0.66 + (noise - 0.5) * 0.34 - speedNorm * 0.26;
       pressures[i] = Math.min(0.98, Math.max(0.28, p));
+    }
+    return pressures;
+  }
+
+  if (pen.key === "crayon") {
+    for (let i = 0; i < n; i++) {
+      const speedNorm = Math.min(1, speeds[i] / SPEED_FULL);
+      // 蜡质斑驳：低频成簇噪声（每 5 点一簇）为主，块状深浅不匀；
+      // 速度衰减比铅笔小——蜡笔速涂依旧覆盖浓重
+      const noise = hashNoise(Math.floor(i / 5)) * 0.7 + hashNoise(i) * 0.3;
+      const p = 0.82 + (noise - 0.5) * 0.44 - speedNorm * 0.18;
+      pressures[i] = Math.min(1, Math.max(0.34, p));
     }
     return pressures;
   }
