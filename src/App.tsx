@@ -29,6 +29,7 @@ import { buildShapeElement, buildPreviewPolyline } from "./lib/buildShapeElement
 import {
   PEN_PRESETS,
   buildFreedrawElement,
+  buildHighlighterStrokeElement,
   randomPenId,
   isDefaultInk,
   type PenType,
@@ -419,7 +420,8 @@ export default function App() {
         }
       }
 
-      // 多笔刷：自己采集轨迹并实时预览 freedraw 笔触
+      // 多笔刷：自己采集轨迹并实时预览笔触
+      // 荧光笔直接用平头轮廓元素预览（预览即最终效果），其余笔走 freedraw
       if (isPenTool(activeTool) && activePenRef.current) {
         const pen = PEN_PRESETS[activePenRef.current];
         penDrawingRef.current = true;
@@ -430,17 +432,27 @@ export default function App() {
         penPendingPointsRef.current = points;
         const api = excalidrawAPIRef.current;
         if (api) {
-          const preview = buildFreedrawElement(
-            points,
-            api.getAppState(),
-            pen,
-            randomPenId(),
-          );
+          const preview =
+            activePenRef.current === "highlighter"
+              ? buildHighlighterStrokeElement(
+                  points,
+                  api.getAppState(),
+                  pen,
+                  randomPenId(),
+                )
+              : buildFreedrawElement(
+                  points,
+                  api.getAppState(),
+                  pen,
+                  randomPenId(),
+                );
           penPreviewRef.current = preview;
-          api.updateScene({
-            elements: [...api.getSceneElements(), preview],
-            captureUpdate: CaptureUpdateAction.NEVER,
-          });
+          if (preview) {
+            api.updateScene({
+              elements: [...api.getSceneElements(), preview],
+              captureUpdate: CaptureUpdateAction.NEVER,
+            });
+          }
         }
       }
     },
@@ -493,12 +505,22 @@ export default function App() {
             const preview = penPreviewRef.current;
             const pen = activePenRef.current;
             if (!api || !preview || !pen) return;
-            const next = buildFreedrawElement(
-              penPendingPointsRef.current,
-              api.getAppState(),
-              PEN_PRESETS[pen],
-              preview.id,
-            );
+            const penPreset = PEN_PRESETS[pen];
+            const next =
+              pen === "highlighter"
+                ? buildHighlighterStrokeElement(
+                    penPendingPointsRef.current,
+                    api.getAppState(),
+                    penPreset,
+                    preview.id,
+                  )
+                : buildFreedrawElement(
+                    penPendingPointsRef.current,
+                    api.getAppState(),
+                    penPreset,
+                    preview.id,
+                  );
+            if (!next) return;
             penPreviewRef.current = next;
             api.updateScene({
               elements: [
@@ -594,14 +616,28 @@ export default function App() {
       return;
     }
 
-    const stroke = buildFreedrawElement(
-      points,
-      api.getAppState(),
-      PEN_PRESETS[pen],
-      randomPenId(),
-    );
+    // 荧光笔：平头轮廓元素（预览阶段已是同构元素，这里重建最终轮廓收尾）；
+    // 其余笔：整条轨迹固化成 freedraw 元素
+    const preset = PEN_PRESETS[pen];
+    const finalElement =
+      pen === "highlighter"
+        ? buildHighlighterStrokeElement(
+            points,
+            api.getAppState(),
+            preset,
+            randomPenId(),
+          )
+        : buildFreedrawElement(points, api.getAppState(), preset, randomPenId());
+    if (!finalElement) {
+      api.updateScene({
+        elements: withoutPreview,
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+      penPreviewRef.current = null;
+      return;
+    }
     api.updateScene({
-      elements: [...withoutPreview, stroke],
+      elements: [...withoutPreview, finalElement],
       captureUpdate: CaptureUpdateAction.IMMEDIATELY,
     });
     penPreviewRef.current = null;
