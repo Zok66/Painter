@@ -1,0 +1,175 @@
+/* —— 更多画笔：胶囊按钮 + 下拉菜单 —— */
+
+.pen-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.btn-pen {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px 0 10px;
+  background: var(--painter-green-light);
+  border-color: var(--painter-green);
+  color: var(--painter-green-dark);
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.btn-pen:hover:not(:disabled) {
+  background: #d9f5e2;
+}
+
+.btn-pen.active {
+  background: var(--painter-green);
+  border-color: var(--painter-green);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+
+.pen-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: currentColor;
+}
+
+.pen-btn-text {
+  font-size: 13px;
+}
+
+.pen-caret {
+  font-size: 11px;
+  line-height: 1;
+  transform: translateY(-1px);
+  opacity: 0.8;
+  transition: transform 0.12s ease;
+}
+
+.pen-caret.up {
+  transform: translateY(-1px) rotate(180deg);
+}
+
+/* —— 下拉面板 —— */
+.pen-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  width: 250px;
+  padding: 6px;
+  background: var(--painter-bar);
+  border: 1px solid var(--painter-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 40, 25, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pen-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--painter-text);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.pen-item:hover {
+  background: var(--painter-hover);
+  border-color: var(--painter-border);
+}
+
+.pen-item.selected {
+  background: var(--painter-green-light);
+  border-color: var(--painter-green);
+}
+
+.pen-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 18px;
+  color: var(--painter-text);
+}
+
+.pen-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pen-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--painter-text);
+}
+
+.pen-desc {
+  font-size: 11px;
+  color: var(--painter-text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pen-check {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--painter-green-dark);
+}
+
+/* —— 暗色适配 —— */
+[data-theme="dark"] .btn-pen {
+  background: #2a2a2a;
+  border-color: #3f3f3f;
+  color: #d6d6d6;
+}
+
+[data-theme="dark"] .btn-pen:hover:not(:disabled) {
+  background: #333;
+  border-color: var(--painter-green);
+}
+
+[data-theme="dark"] .pen-dropdown {
+  background: #262626;
+  border-color: var(--painter-border-dark);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="dark"] .pen-item:hover {
+  background: var(--painter-hover-dark);
+  border-color: var(--painter-border-dark);
+}
+
+[data-theme="dark"] .pen-item.selected {
+  background: #14361f;
+  border-color: var(--painter-green-dark);
+}
+
+[data-theme="dark"] .pen-name {
+  color: #e6e6e6;
+}
+
+[data-theme="dark"] .pen-desc {
+  color: #9aa5a0;
+}
+
+[data-theme="dark"] .pen-swatch {
+  color: #e6e6e6;
+}

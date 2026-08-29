@@ -1,5 +1,7 @@
 import { useRef } from "react";
 import clsx from "clsx";
+import PenMenu from "./PenMenu";
+import type { PenType } from "../lib/pens";
 import "./Toolbar.css";
 
 /** 工具栏可执行的操作集合,由 App 通过 props 注入 */
@@ -13,6 +15,8 @@ export interface ToolbarActions {
   onToggleTheme: () => void;
   onSmartShape: () => void;
   smartShapeActive: boolean;
+  onSelectPen: (type: PenType) => void;
+  activePen: PenType | null;
   isDark: boolean;
 }
 
@@ -32,6 +36,8 @@ export default function Toolbar(props: ToolbarProps) {
     onToggleTheme,
     onSmartShape,
     smartShapeActive,
+    onSelectPen,
+    activePen,
     isDark,
     saving,
   } = props;
@@ -98,6 +104,9 @@ export default function Toolbar(props: ToolbarProps) {
           <span className="smartshape-text">智能画笔</span>
           <span className="smartshape-kbd">Shift+X</span>
         </button>
+
+        {/* 多笔刷：圆珠笔 / 钢笔 / 铅笔 / 荧光笔 */}
+        <PenMenu activePen={activePen} onSelectPen={onSelectPen} />
 
         <div className="divider" />
 

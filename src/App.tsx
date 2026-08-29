@@ -26,15 +26,28 @@ import StylePanel, {
   type Roughness,
 } from "./components/StylePanel";
 import { buildShapeElement, buildPreviewPolyline } from "./lib/buildShapeElement";
+import {
+  PEN_PRESETS,
+  buildFreedrawElement,
+  randomPenId,
+  isDefaultInk,
+  type PenType,
+} from "./lib/pens";
 import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
 
 const STORAGE_KEY = "painter:scene:v1";
 const SMART_SHAPE_TOOL = "smart-shape";
+const PEN_TOOL = "pen-brush";
 
 /** 判断工具是否属于"非智能画笔"的普通工具（用于自动退出智能画笔模式） */
 function isSmartShapeTool(tool: ActiveTool): boolean {
   return tool.type === "custom" && tool.customType === SMART_SHAPE_TOOL;
+}
+
+/** 判断工具是否为自研多笔刷 */
+function isPenTool(tool: ActiveTool): boolean {
+  return tool.type === "custom" && tool.customType === PEN_TOOL;
 }
 
 const DEFAULT_DRAW_STYLE: DrawStyle = {
@@ -77,6 +90,8 @@ export default function App() {
   const drawStyleRef = useRef<DrawStyle>(DEFAULT_DRAW_STYLE);
   const [styleReady, setStyleReady] = useState(false);
   const [smartShapeActive, setSmartShapeActive] = useState(false);
+  const [activePen, setActivePen] = useState<PenType | null>(null);
+  const activePenRef = useRef<PenType | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const smartShapePointsRef = useRef<Point[]>([]);
@@ -84,6 +99,12 @@ export default function App() {
   const smartShapePreviewRef = useRef<ExcalidrawElement | null>(null);
   const smartShapePendingPointsRef = useRef<Point[]>([]);
   const smartShapeRafRef = useRef<number | null>(null);
+  // 多笔刷绘制状态（与智能画笔互斥，共用同一套 pointer 回调）
+  const penDrawingRef = useRef(false);
+  const penPointsRef = useRef<Point[]>([]);
+  const penPendingPointsRef = useRef<Point[]>([]);
+  const penPreviewRef = useRef<ExcalidrawElement | null>(null);
+  const penRafRef = useRef<number | null>(null);
 
   // 读取本地自动保存的场景
   useEffect(() => {
@@ -101,6 +122,11 @@ export default function App() {
       // 智能画笔模式下，若用户切换到其它工具则自动退出
       if (smartShapeActive && !isSmartShapeTool(appState.activeTool)) {
         setSmartShapeActive(false);
+      }
+      // 多笔刷模式下，若用户切换到其它工具则自动退出
+      if (activePenRef.current && !isPenTool(appState.activeTool)) {
+        activePenRef.current = null;
+        setActivePen(null);
       }
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
@@ -296,12 +322,58 @@ export default function App() {
       toast("已退出智能画笔");
       return;
     }
+    // 与多笔刷互斥
+    activePenRef.current = null;
+    setActivePen(null);
     setSmartShapeActive(true);
     api.setActiveTool(
       { type: "custom", customType: SMART_SHAPE_TOOL, locked: true },
     );
     toast("智能画笔已启用：画出三角形、五角星等图形后松手自动识别");
   }, [toast, smartShapeActive]);
+
+  // 退出多笔刷模式
+  const handleExitPen = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    activePenRef.current = null;
+    setActivePen(null);
+    api?.setActiveTool({ type: "selection" });
+  }, []);
+
+  // 选择某支笔：进入自研绘制模式；再点同一支笔则退出
+  const handleSelectPen = useCallback(
+    (type: PenType) => {
+      const api = excalidrawAPIRef.current;
+      if (!api) return;
+      if (activePenRef.current === type) {
+        handleExitPen();
+        return;
+      }
+      const preset = PEN_PRESETS[type];
+      // 与智能画笔互斥
+      setSmartShapeActive(false);
+      activePenRef.current = type;
+      setActivePen(type);
+      api.setActiveTool({ type: "custom", customType: PEN_TOOL, locked: true });
+
+      // 荧光笔这类笔在默认墨色下看不出效果，自动换成推荐色
+      const appState = api.getAppState();
+      let colorChanged = false;
+      if (preset.suggestColor && isDefaultInk(appState.currentItemStrokeColor)) {
+        api.updateScene({
+          appState: {
+            ...appState,
+            currentItemStrokeColor: preset.suggestColor,
+          },
+        });
+        colorChanged = true;
+      }
+      toast(
+        `已切换到${preset.name}${colorChanged ? "（并自动换成荧光色）" : ""}：在画布上直接书写`,
+      );
+    },
+    [toast],
+  );
 
   // Shift+X 激活智能画笔
   useEffect(() => {
@@ -346,6 +418,31 @@ export default function App() {
           });
         }
       }
+
+      // 多笔刷：自己采集轨迹并实时预览 freedraw 笔触
+      if (isPenTool(activeTool) && activePenRef.current) {
+        const pen = PEN_PRESETS[activePenRef.current];
+        penDrawingRef.current = true;
+        const points = [
+          { x: pointerDownState.origin.x, y: pointerDownState.origin.y },
+        ];
+        penPointsRef.current = points;
+        penPendingPointsRef.current = points;
+        const api = excalidrawAPIRef.current;
+        if (api) {
+          const preview = buildFreedrawElement(
+            points,
+            api.getAppState(),
+            pen,
+            randomPenId(),
+          );
+          penPreviewRef.current = preview;
+          api.updateScene({
+            elements: [...api.getSceneElements(), preview],
+            captureUpdate: CaptureUpdateAction.NEVER,
+          });
+        }
+      }
     },
     [],
   );
@@ -377,6 +474,35 @@ export default function App() {
             api.updateScene({
               elements: [
                 ...elements.filter((el) => el.id !== next.id),
+                next,
+              ],
+              captureUpdate: CaptureUpdateAction.NEVER,
+            });
+          });
+        }
+      }
+
+      // 多笔刷：追加采样点并节流重建预览
+      if (penDrawingRef.current && payload.button === "down" && activePenRef.current) {
+        penPointsRef.current.push({ x: payload.pointer.x, y: payload.pointer.y });
+        penPendingPointsRef.current = penPointsRef.current;
+        if (penRafRef.current == null) {
+          penRafRef.current = requestAnimationFrame(() => {
+            penRafRef.current = null;
+            const api = excalidrawAPIRef.current;
+            const preview = penPreviewRef.current;
+            const pen = activePenRef.current;
+            if (!api || !preview || !pen) return;
+            const next = buildFreedrawElement(
+              penPendingPointsRef.current,
+              api.getAppState(),
+              PEN_PRESETS[pen],
+              preview.id,
+            );
+            penPreviewRef.current = next;
+            api.updateScene({
+              elements: [
+                ...api.getSceneElements().filter((el) => el.id !== next.id),
                 next,
               ],
               captureUpdate: CaptureUpdateAction.NEVER,
@@ -441,6 +567,55 @@ export default function App() {
     [],
   );
 
+  // 多笔刷：松手时把整条轨迹固化成 freedraw 元素
+  const handlePenPointerUp = useCallback(() => {
+    if (!penDrawingRef.current) return;
+    penDrawingRef.current = false;
+    if (penRafRef.current != null) {
+      cancelAnimationFrame(penRafRef.current);
+      penRafRef.current = null;
+    }
+    const points = penPointsRef.current;
+    const api = excalidrawAPIRef.current;
+    const preview = penPreviewRef.current;
+    const pen = activePenRef.current;
+    if (!api) return;
+
+    const withoutPreview = preview
+      ? api.getSceneElements().filter((el) => el.id !== preview.id)
+      : api.getSceneElements();
+
+    if (!pen || points.length === 0) {
+      api.updateScene({
+        elements: withoutPreview,
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+      penPreviewRef.current = null;
+      return;
+    }
+
+    const stroke = buildFreedrawElement(
+      points,
+      api.getAppState(),
+      PEN_PRESETS[pen],
+      randomPenId(),
+    );
+    api.updateScene({
+      elements: [...withoutPreview, stroke],
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    penPreviewRef.current = null;
+  }, []);
+
+  // 统一的 pointerUp：先处理多笔刷，再处理智能画笔
+  const handlePointerUpCombined = useCallback(
+    (activeTool: ActiveTool) => {
+      handlePenPointerUp();
+      handlePointerUp(activeTool);
+    },
+    [handlePenPointerUp, handlePointerUp],
+  );
+
   const actions = useMemo(
     () => ({
       onNew: handleNew,
@@ -452,9 +627,11 @@ export default function App() {
       onToggleTheme: handleToggleTheme,
       onSmartShape: handleSmartShape,
       smartShapeActive,
+      onSelectPen: handleSelectPen,
+      activePen,
       isDark,
     }),
-    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, isDark],
+    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, handleSelectPen, activePen, isDark],
   );
 
   return (
@@ -485,7 +662,7 @@ export default function App() {
           onChange={handleChange}
           onPointerDown={handlePointerDown}
           onPointerUpdate={handlePointerUpdate}
-          onPointerUp={handlePointerUp}
+          onPointerUp={handlePointerUpCombined}
           theme={isDark ? THEME.DARK : THEME.LIGHT}
           UIOptions={{
             canvasActions: {
