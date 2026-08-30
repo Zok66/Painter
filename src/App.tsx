@@ -771,7 +771,12 @@ export default function App() {
   }, [ready, activePen, smartShapeActive]);
 
   return (
-    <div className={`app ${smartShapeActive ? "smart-shape-active" : ""}`} data-theme={isDark ? "dark" : "light"}>
+    <div
+      className={`app${smartShapeActive ? " smart-shape-active" : ""}${
+        activePen ? " pen-active" : ""
+      }`}
+      data-theme={isDark ? "dark" : "light"}
+    >
       <Toolbar {...actions} saving={saving} />
       <div className="workspace">
         {(smartShapeActive || activePen) &&
