@@ -63,6 +63,37 @@ function isGrainPen(pen: PenType | null): boolean {
   return pen === "pencil" || pen === "crayon";
 }
 
+/**
+ * 每支笔的画布光标（SVG data-URI）。
+ * 默认 crosshair 字形热点由系统决定、对粗笔只是一根细十字，看不出落在笔宽中间；
+ * 这里用热点精确居中（17,17）的十字 +（粗笔）表示笔宽的圆，保证十字处于笔宽正中。
+ */
+function penCursor(pen: PenType | null): string {
+  if (!pen) return "crosshair";
+  // 近似笔半径（CSS px，仅用于光标可视化，不随画布缩放变化）
+  const radius: Record<PenType, number> = {
+    ballpoint: 2,
+    fountain: 6,
+    pencil: 6,
+    crayon: 9,
+    highlighter: 8,
+  };
+  const r = radius[pen];
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'>` +
+    `<g stroke='white' stroke-width='3.2' stroke-linecap='round'>` +
+    `<line x1='17' y1='1' x2='17' y2='13'/><line x1='17' y1='21' x2='17' y2='33'/>` +
+    `<line x1='1' y1='17' x2='13' y2='17'/><line x1='21' y1='17' x2='33' y2='17'/>` +
+    `</g>` +
+    `<g stroke='black' stroke-width='1.6' stroke-linecap='round'>` +
+    `<line x1='17' y1='1' x2='17' y2='13'/><line x1='17' y1='21' x2='17' y2='33'/>` +
+    `<line x1='1' y1='17' x2='13' y2='17'/><line x1='21' y1='17' x2='33' y2='17'/>` +
+    `</g>` +
+    `<circle cx='17' cy='17' r='${r}' fill='none' stroke='black' stroke-width='1.4' opacity='0.55'/>` +
+    `</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 17 17, crosshair`;
+}
+
 const DEFAULT_DRAW_STYLE: DrawStyle = {
   strokeColor: "#1e1e1e",
   backgroundColor: "transparent",
@@ -776,6 +807,7 @@ export default function App() {
         activePen ? " pen-active" : ""
       }`}
       data-theme={isDark ? "dark" : "light"}
+      style={{ "--pen-cursor": penCursor(activePen) } as React.CSSProperties}
     >
       <Toolbar {...actions} saving={saving} />
       <div className="workspace">

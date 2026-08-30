@@ -93,8 +93,11 @@
 
 /* 自研绘制工具(更多画笔 / 智能画笔)激活时:画布光标强制为十字,
    与原生 freedraw(P/7)一致。Excalidraw 的 cursor 管理器对 custom 工具
-   默认回退为 auto(箭头),这里用 !important 覆盖其写入画布的内联样式。 */
-.app.pen-active .excalidraw__canvas,
+   默认回退为 auto(箭头),这里用 !important 覆盖其写入画布的内联样式。
+   更多画笔用热点精确居中的自定义十字(带笔宽示意圆),保证十字落在笔宽正中。 */
+.app.pen-active .excalidraw__canvas {
+  cursor: var(--pen-cursor, crosshair) !important;
+}
 .app.smart-shape-active .excalidraw__canvas {
   cursor: crosshair !important;
 }
