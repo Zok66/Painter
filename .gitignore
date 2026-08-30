@@ -23,5 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
+# 测试脚本的截图输出
+scripts/test_out/
+
 # WorkBuddy local data
 .workbuddy/

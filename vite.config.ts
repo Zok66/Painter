@@ -127,7 +127,7 @@ export default defineConfig({
       // 走源码直载,其内部对 use-sync-external-store 的子路径引用无法被重写
       'zustand',
       'zustand/traditional',
-      // 其余被 @excalidraw/* 链路引用的 CJS 包(scripts/scan-cjs-deps.cjs 扫描)
+      // 其余被 @excalidraw/* 链路引用的 CJS 包
       '@excalidraw/markdown-to-text',
       'pica',
       'fuzzy',
