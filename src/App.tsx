@@ -426,7 +426,7 @@ export default function App() {
           const elements = api.getSceneElements();
           api.updateScene({
             elements: [...elements, preview],
-            captureUpdate: CaptureUpdateAction.NEVER,
+            captureUpdate: CaptureUpdateAction.EVENTUALLY,
           });
         }
       }
@@ -469,7 +469,7 @@ export default function App() {
           if (preview) {
             api.updateScene({
               elements: [...api.getSceneElements(), preview],
-              captureUpdate: CaptureUpdateAction.NEVER,
+              captureUpdate: CaptureUpdateAction.EVENTUALLY,
             });
           }
         }
@@ -507,7 +507,7 @@ export default function App() {
                 ...elements.filter((el) => el.id !== next.id),
                 next,
               ],
-              captureUpdate: CaptureUpdateAction.NEVER,
+              captureUpdate: CaptureUpdateAction.EVENTUALLY,
             });
           });
         }
@@ -553,7 +553,7 @@ export default function App() {
                 ...api.getSceneElements().filter((el) => el.id !== next.id),
                 next,
               ],
-              captureUpdate: CaptureUpdateAction.NEVER,
+              captureUpdate: CaptureUpdateAction.EVENTUALLY,
             });
           });
         }
@@ -587,7 +587,7 @@ export default function App() {
             elements: api
               .getSceneElements()
               .filter((el) => el.id !== preview.id),
-            captureUpdate: CaptureUpdateAction.NEVER,
+            captureUpdate: CaptureUpdateAction.EVENTUALLY,
           });
         }
         return;
@@ -602,7 +602,7 @@ export default function App() {
         // 识别失败：不生成任何元素，只移除预览轨迹
         api.updateScene({
           elements: withoutPreview,
-          captureUpdate: CaptureUpdateAction.NEVER,
+          captureUpdate: CaptureUpdateAction.EVENTUALLY,
         });
         return;
       }
@@ -636,7 +636,7 @@ export default function App() {
     if (!pen || points.length === 0) {
       api.updateScene({
         elements: withoutPreview,
-        captureUpdate: CaptureUpdateAction.NEVER,
+        captureUpdate: CaptureUpdateAction.EVENTUALLY,
       });
       penPreviewRef.current = null;
       return;
@@ -657,7 +657,7 @@ export default function App() {
     if (!baseElement) {
       api.updateScene({
         elements: withoutPreview,
-        captureUpdate: CaptureUpdateAction.NEVER,
+        captureUpdate: CaptureUpdateAction.EVENTUALLY,
       });
       penPreviewRef.current = null;
       return;
