@@ -11,6 +11,7 @@ import {
 import type {
   ExcalidrawImperativeAPI,
   AppState,
+  BinaryFileData,
   BinaryFiles,
   ActiveTool,
   PointerDownState,
@@ -197,6 +198,12 @@ export default function App() {
           excalidrawAPI.getAppState(),
           excalidrawAPI.getSceneElements() as readonly ExcalidrawElement[],
         );
+        // 图片等二进制资源不走 updateScene（SceneData 没有 files 字段），
+        // 必须单独 addFiles，否则图片元素在但数据不在，打开后图片是空白。
+        const files = Object.values(data.files ?? {}) as BinaryFileData[];
+        if (files.length) {
+          excalidrawAPI.addFiles(files);
+        }
         excalidrawAPI.updateScene({
           elements: data.elements,
           appState: data.appState,
