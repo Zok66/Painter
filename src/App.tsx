@@ -839,6 +839,7 @@ export default function App() {
             excalidrawAPIRef.current = api;
             setExcalidrawAPI(api);
             setReady(true);
+            (window as unknown as Record<string, unknown>).__painterAPI = api;
           }}
           initialData={initialData}
           onChange={handleChange}

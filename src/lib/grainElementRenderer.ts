@@ -65,7 +65,16 @@ class GrainElementRenderer {
     const count = particles.length / GRAIN_PARTICLE_STRIDE;
     if (count === 0) return;
 
-    if (this.useWebgl && this.engine && this.glCanvas) {
+    // 钩子收到的 context 是 Excalidraw 元素离屏画布（element-local 空间），
+    // 之后由 Excalidraw 用 drawImage(offscreen, element.x, element.y) 贴回主画布。
+    // 因此这里直接用局部坐标绘制即可，**不要再 context.translate(element.x/y)**，
+    // 否则会双重平移导致离屏越界、笔迹不可见。
+
+    // 仅当 WebGL 引擎确实可用（着色器编译成功）才走 GPU 路径；
+    // 否则回退 2D 兜底，避免静默画不出任何东西。
+    const canWebgl =
+      this.useWebgl && this.engine !== null && this.engine.supported;
+    if (canWebgl) {
       try {
         this.renderWebgl(element, context, particles, count);
         return;
@@ -176,12 +185,16 @@ class GrainElementRenderer {
     });
     engine.setPreview(shifted, count);
     engine.render();
+    // 源矩形只取颗粒内容占用的区域（与缩放后尺寸一致），避免把整张 4096²
+    // GL 画布非均匀拉伸到目标矩形导致笔迹错位 / 压扁。
+    const srcW = Math.min(canvas.width, Math.round(width * scale));
+    const srcH = Math.min(canvas.height, Math.round(height * scale));
     context.drawImage(
       canvas,
       0,
       0,
-      canvas.width,
-      canvas.height,
+      srcW,
+      srcH,
       minX - pad,
       minY - pad,
       width,
