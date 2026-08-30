@@ -83,6 +83,14 @@ function download(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/**
+ * 把键盘焦点交还给画板。
+ * 点过工具栏按钮后焦点还留在按钮上，此时按 Ctrl+Z 不会送进 Excalidraw。
+ */
+function refocusCanvas() {
+  document.querySelector<HTMLElement>(".excalidraw")?.focus();
+}
+
 /** 时间戳文件名 */
 function stamp(prefix: string, ext: string) {
   const d = new Date();
@@ -165,7 +173,12 @@ export default function App() {
   // 新建空白画布
   const handleNew = useCallback(() => {
     if (!excalidrawAPI) return;
-    excalidrawAPI.updateScene({ elements: [] });
+    // IMMEDIATELY：整场景替换必须进 undo 栈，否则一键就把内容全毁了且撤不回来
+    excalidrawAPI.updateScene({
+      elements: [],
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    refocusCanvas();
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -187,7 +200,9 @@ export default function App() {
         excalidrawAPI.updateScene({
           elements: data.elements,
           appState: data.appState,
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
         });
+        refocusCanvas();
         const api = excalidrawAPI as any;
         if (typeof api.scrollToContent === "function") {
           api.scrollToContent(undefined, { fitToContent: true, animate: true });
@@ -273,8 +288,14 @@ export default function App() {
     if (!excalidrawAPI) return;
     const ok = window.confirm("确定清空当前画布吗?此操作可通过撤销(Ctrl+Z)恢复。");
     if (!ok) return;
-    excalidrawAPI.updateScene({ elements: [] });
-    toast("已清空画布");
+    // 必须带 IMMEDIATELY：不带 captureUpdate 时 updateScene 只发 ephemeral 增量，
+    // 不进 undo 栈，Ctrl+Z 撤不回来（确认框里承诺的可恢复就没兑现）。
+    excalidrawAPI.updateScene({
+      elements: [],
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    refocusCanvas();
+    toast("已清空画布（Ctrl+Z 可恢复）");
   }, [excalidrawAPI, toast]);
 
   // 切换主题
