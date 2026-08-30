@@ -31,6 +31,7 @@ import {
   buildFreedrawElement,
   buildHighlighterStrokeElement,
   randomPenId,
+  scalePenPreset,
   isDefaultInk,
   type PenType,
 } from "./lib/pens";
@@ -45,7 +46,7 @@ const STORAGE_KEY = "painter:scene:v1";
 const SMART_SHAPE_TOOL = "smart-shape";
 const PEN_TOOL = "pen-brush";
 
-/** 判断工具是否属于"非智能画笔"的普通工具（用于自动退出智能画笔模式） */
+/** 判断工具是否为智能画笔（自研自定义工具） */
 function isSmartShapeTool(tool: ActiveTool): boolean {
   return tool.type === "custom" && tool.customType === SMART_SHAPE_TOOL;
 }
@@ -102,6 +103,9 @@ export default function App() {
   const [smartShapeActive, setSmartShapeActive] = useState(false);
   const [activePen, setActivePen] = useState<PenType | null>(null);
   const activePenRef = useRef<PenType | null>(null);
+  // 更多画笔的笔尖粗细档位（与智能画笔的 strokeWidthKey 相互独立）
+  const [penWidthKey, setPenWidthKey] = useState<StrokeWidthKey>("medium");
+  const penWidthRef = useRef<StrokeWidthKey>("medium");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const smartShapePointsRef = useRef<Point[]>([]);
@@ -131,11 +135,10 @@ export default function App() {
   // 自动保存到 localStorage(防抖)
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      // 智能画笔模式下，若用户切换到其它工具则自动退出
+      // 用户在 Excalidraw 原生工具栏选了别的工具 → 自动退出自研模式，保持互斥
       if (smartShapeActive && !isSmartShapeTool(appState.activeTool)) {
         setSmartShapeActive(false);
       }
-      // 多笔刷模式下，若用户切换到其它工具则自动退出
       if (activePenRef.current && !isPenTool(appState.activeTool)) {
         activePenRef.current = null;
         setActivePen(null);
@@ -307,9 +310,10 @@ export default function App() {
       drawStyleRef.current = next;
       const api = excalidrawAPIRef.current;
       if (api) {
+        // 只传要改的字段：updateScene 是浅合并，整包回写 getAppState()
+        // 会把尚未落地的 activeTool 冲掉，导致自定义画笔被退回选择工具。
         api.updateScene({
           appState: {
-            ...api.getAppState(),
             currentItemStrokeColor: next.strokeColor as any,
             currentItemBackgroundColor: next.backgroundColor as any,
             currentItemFillStyle: next.fillStyle as any,
@@ -322,6 +326,20 @@ export default function App() {
       return next;
     });
   }, []);
+
+  // 画笔面板：颜色走同一套 drawStyle，粗细只影响笔尖缩放，不与智能画笔共享
+  const handlePenStyleChange = useCallback(
+    (patch: Partial<DrawStyle>) => {
+      if (patch.strokeWidthKey !== undefined) {
+        penWidthRef.current = patch.strokeWidthKey;
+        setPenWidthKey(patch.strokeWidthKey);
+      }
+      if (patch.strokeColor !== undefined) {
+        handleStyleChange({ strokeColor: patch.strokeColor });
+      }
+    },
+    [handleStyleChange],
+  );
 
   // 启用智能画笔：手绘后松手自动识别为形状
   const handleSmartShape = useCallback(() => {
@@ -372,19 +390,25 @@ export default function App() {
       const appState = api.getAppState();
       let colorChanged = false;
       if (preset.suggestColor && isDefaultInk(appState.currentItemStrokeColor)) {
+        // 注意：updateScene 的 appState 是浅合并进 Excalidraw state 的，
+        // 这里只能传要改的字段。若把 getAppState() 整包回写，
+        // 会把上面 setActiveTool 尚未落地的 activeTool 冲掉（自定义工具退回选择工具）。
         api.updateScene({
-          appState: {
-            ...appState,
-            currentItemStrokeColor: preset.suggestColor,
-          },
+          appState: { currentItemStrokeColor: preset.suggestColor },
         });
         colorChanged = true;
+        // 面板色卡要跟着推荐色走，否则面板显示的和真正画出来的不是同一个颜色
+        setDrawStyle((prev) => {
+          const next = { ...prev, strokeColor: preset.suggestColor! };
+          drawStyleRef.current = next;
+          return next;
+        });
       }
       toast(
         `已切换到${preset.name}${colorChanged ? "（并自动换成推荐色）" : ""}：在画布上直接书写`,
       );
     },
-    [toast],
+    [toast, handleExitPen],
   );
 
   // Shift+X 激活智能画笔
@@ -434,7 +458,10 @@ export default function App() {
       // 多笔刷：自己采集轨迹并实时预览笔触
       // 荧光笔直接用平头轮廓元素预览（预览即最终效果），其余笔走 freedraw
       if (isPenTool(activeTool) && activePenRef.current) {
-        const pen = PEN_PRESETS[activePenRef.current];
+        const pen = scalePenPreset(
+          PEN_PRESETS[activePenRef.current],
+          penWidthRef.current,
+        );
         penDrawingRef.current = true;
         const points = [
           { x: pointerDownState.origin.x, y: pointerDownState.origin.y },
@@ -524,7 +551,7 @@ export default function App() {
             const preview = penPreviewRef.current;
             const pen = activePenRef.current;
             if (!api || !preview || !pen) return;
-            const penPreset = PEN_PRESETS[pen];
+            const penPreset = scalePenPreset(PEN_PRESETS[pen], penWidthRef.current);
             const next =
               pen === "highlighter"
                 ? buildHighlighterStrokeElement(
@@ -644,7 +671,7 @@ export default function App() {
 
     // 荧光笔：平头轮廓元素（预览阶段已是同构元素，这里重建最终轮廓收尾）；
     // 其余笔：整条轨迹固化成 freedraw 元素
-    const preset = PEN_PRESETS[pen];
+    const preset = scalePenPreset(PEN_PRESETS[pen], penWidthRef.current);
     const baseElement =
       pen === "highlighter"
         ? buildHighlighterStrokeElement(
@@ -709,10 +736,13 @@ export default function App() {
     <div className={`app ${smartShapeActive ? "smart-shape-active" : ""}`} data-theme={isDark ? "dark" : "light"}>
       <Toolbar {...actions} saving={saving} />
       <div className="workspace">
-        {smartShapeActive && (
+        {(smartShapeActive || activePen) && (
           <StylePanel
-            style={drawStyle}
-            onChange={handleStyleChange}
+            mode={activePen ? "pen" : "shape"}
+            style={
+              activePen ? { ...drawStyle, strokeWidthKey: penWidthKey } : drawStyle
+            }
+            onChange={activePen ? handlePenStyleChange : handleStyleChange}
             isDark={isDark}
           />
         )}

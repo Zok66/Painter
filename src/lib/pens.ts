@@ -50,6 +50,27 @@ export interface PenPreset {
   suggestColor?: string;
 }
 
+/**
+ * 面板上的「细 / 中 / 粗」三档对应的笔尖缩放系数。
+ * 各支笔的 strokeWidth 差异很大（铅笔 1.9、蜡笔 13），
+ * 所以这里用「缩放」而不是直接覆盖，保证每支笔的手感比例不变。
+ */
+export const PEN_WIDTH_SCALES: Record<"thin" | "medium" | "bold", number> = {
+  thin: 0.55,
+  medium: 1,
+  bold: 1.7,
+};
+
+/** 按粗细档位缩放笔触宽度，返回一份临时 preset（不修改原 preset） */
+export function scalePenPreset(
+  pen: PenPreset,
+  key: "thin" | "medium" | "bold",
+): PenPreset {
+  const scale = PEN_WIDTH_SCALES[key] ?? 1;
+  if (scale === 1) return pen;
+  return { ...pen, strokeWidth: pen.strokeWidth * scale };
+}
+
 export const PEN_PRESETS: Record<PenType, PenPreset> = {
   ballpoint: {
     key: "ballpoint",

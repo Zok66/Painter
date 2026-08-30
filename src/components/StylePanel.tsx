@@ -30,6 +30,12 @@ interface StylePanelProps {
   style: DrawStyle;
   onChange: (style: Partial<DrawStyle>) => void;
   isDark: boolean;
+  /**
+   * shape = 智能画笔面板（描边 / 背景 / 填充 / 描边宽度 / 边框样式 / 线条风格 / 边角）
+   * pen   = 更多画笔面板，与原生 Excalidraw 的 freedraw 面板保持一致，
+   *         只保留对笔画真正生效的两项：描边 + 描边宽度
+   */
+  mode?: "shape" | "pen";
 }
 
 // 原生 Draw to shape 面板的图标，SVG 结构直接取自 Excalidraw。
@@ -631,8 +637,10 @@ export default function StylePanel({
   style,
   onChange,
   isDark,
+  mode = "shape",
 }: StylePanelProps) {
   const isTransparent = style.backgroundColor === "transparent";
+  const isPen = mode === "pen";
 
   const fillOptions: RadioOption<FillStyle>[] = [
     { value: "hachure", label: "线条", icon: <FillHachureIcon /> },
@@ -662,6 +670,32 @@ export default function StylePanel({
     { value: "sharp", label: "尖锐", icon: <EdgeSharpIcon /> },
     { value: "rounded", label: "圆润", icon: <EdgeRoundIcon /> },
   ];
+
+  // 更多画笔：只保留对笔画生效的两项，DOM 结构与完整面板保持一致（复用同一套样式）
+  if (isPen) {
+    return (
+      <aside className="style-panel" aria-label="绘图风格">
+        <div className="selected-shape-actions">
+          <ColorPickerSection
+            label="描边"
+            color={style.strokeColor}
+            topPicks={DEFAULT_ELEMENT_STROKE_PICKS}
+            palette={DEFAULT_ELEMENT_STROKE_COLOR_PALETTE}
+            isDark={isDark}
+            onChange={(c) => onChange({ strokeColor: c })}
+          />
+
+          <RadioSection
+            label="描边宽度"
+            group="stroke-width"
+            options={strokeWidthOptions}
+            value={style.strokeWidthKey}
+            onChange={(strokeWidthKey) => onChange({ strokeWidthKey })}
+          />
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="style-panel" aria-label="绘图风格">
