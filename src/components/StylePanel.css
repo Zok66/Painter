@@ -356,3 +356,30 @@
 .workspace:has(.main-menu-trigger[data-state="open"]) .style-panel {
   z-index: 2;
 }
+
+/* —— 画笔选择栏：位于原生面板顶部的第一行 —— */
+.pen-list .buttonList label {
+  width: auto;
+  height: 2rem;
+  padding: 0 0.45rem;
+}
+
+.pen-list .buttonList label svg {
+  width: 2.25rem;
+  height: auto;
+}
+
+.pen-list .buttonList label.active svg {
+  color: var(--color-on-primary-container);
+}
+
+/* —— 挂载到原生面板容器（.App-menu__left）时改用 static 定位，
+   融入原生布局（出现在工具栏正下方，与原生工具面板同一位置） —— */
+.style-panel.in-native-panel {
+  position: static;
+  top: auto;
+  left: auto;
+  width: 100%;
+  margin: 0.5rem 0 0 0;
+  max-height: calc(100vh - 7rem);
+}

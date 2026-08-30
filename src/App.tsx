@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Excalidraw,
   exportToBlob,
@@ -760,20 +761,35 @@ export default function App() {
     [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, handleSelectPen, activePen, isDark],
   );
 
+  // 把属性面板挂到项目自有的 .workspace 容器（绝对定位浮层），
+  // 视觉上与原生 Draw to shape 面板同位置同风格。
+  // 为什么不挂进 .App-menu_top__left：Excalidraw 的画布在该容器之上
+  // 拦截 pointer-events，会让面板"看得见点不到"。
+  const panelHost = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    return document.querySelector(".workspace") ?? document.body;
+  }, [ready, activePen, smartShapeActive]);
+
   return (
     <div className={`app ${smartShapeActive ? "smart-shape-active" : ""}`} data-theme={isDark ? "dark" : "light"}>
       <Toolbar {...actions} saving={saving} />
       <div className="workspace">
-        {(smartShapeActive || activePen) && (
-          <StylePanel
-            mode={activePen ? "pen" : "shape"}
-            style={
-              activePen ? { ...drawStyle, strokeWidthKey: penWidthKey } : drawStyle
-            }
-            onChange={activePen ? handlePenStyleChange : handleStyleChange}
-            isDark={isDark}
-          />
-        )}
+        {(smartShapeActive || activePen) &&
+          panelHost &&
+          createPortal(
+            <StylePanel
+              mode={activePen ? "pen" : "shape"}
+              style={
+                activePen ? { ...drawStyle, strokeWidthKey: penWidthKey } : drawStyle
+              }
+              onChange={activePen ? handlePenStyleChange : handleStyleChange}
+              isDark={isDark}
+              penType={activePen}
+              onPenTypeChange={handleSelectPen}
+              nativeHost={false}
+            />,
+            panelHost,
+          )}
         <main className="canvas-wrap">
           {!ready && (
             <div className="loading">

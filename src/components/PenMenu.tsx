@@ -3,7 +3,7 @@ import { PEN_ORDER, PEN_PRESETS, type PenType } from "../lib/pens";
 import "./PenMenu.css";
 
 /** 每支笔在菜单里的笔触示意图（48x18） */
-function PenSwatch({ type }: { type: PenType }) {
+export function PenSwatch({ type }: { type: PenType }) {
   switch (type) {
     case "ballpoint":
       return (

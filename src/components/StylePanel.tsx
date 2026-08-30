@@ -8,6 +8,9 @@ import {
   DEFAULT_ELEMENT_STROKE_PICKS,
   isColorDark,
 } from "@excalidraw/common";
+import { PEN_ORDER, PEN_PRESETS } from "../lib/pens";
+import type { PenType } from "../lib/pens";
+import { PenSwatch } from "./PenMenu";
 import "./StylePanel.css";
 
 export type StrokeWidthKey = "thin" | "medium" | "bold";
@@ -36,6 +39,12 @@ interface StylePanelProps {
    *         只保留对笔画真正生效的两项：描边 + 描边宽度
    */
   mode?: "shape" | "pen";
+  /** 当前选中的笔型；pen 模式下用于顶部「画笔」栏高亮 */
+  penType?: PenType | null;
+  /** 切换笔型回调 */
+  onPenTypeChange?: (type: PenType) => void;
+  /** 是否挂载到原生面板容器（.App-menu__left），用 static 定位融入原生布局 */
+  nativeHost?: boolean;
 }
 
 // 原生 Draw to shape 面板的图标，SVG 结构直接取自 Excalidraw。
@@ -638,6 +647,9 @@ export default function StylePanel({
   onChange,
   isDark,
   mode = "shape",
+  penType,
+  onPenTypeChange,
+  nativeHost = false,
 }: StylePanelProps) {
   const isTransparent = style.backgroundColor === "transparent";
   const isPen = mode === "pen";
@@ -674,8 +686,34 @@ export default function StylePanel({
   // 更多画笔：只保留对笔画生效的两项，DOM 结构与完整面板保持一致（复用同一套样式）
   if (isPen) {
     return (
-      <aside className="style-panel" aria-label="绘图风格">
+      <aside className={`style-panel${nativeHost ? " in-native-panel" : ""}`} aria-label="绘图风格">
         <div className="selected-shape-actions">
+          <div className="pen-list">
+            <fieldset>
+              <legend>画笔</legend>
+              <div className="buttonList">
+                {PEN_ORDER.map((type) => {
+                  const preset = PEN_PRESETS[type];
+                  const selected = penType === type;
+                  return (
+                    <label
+                      key={type}
+                      className={selected ? "active" : ""}
+                      title={preset.name}
+                    >
+                      <input
+                        type="radio"
+                        name="pen-type"
+                        checked={selected}
+                        onChange={() => onPenTypeChange?.(type)}
+                      />
+                      <PenSwatch type={type} />
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          </div>
           <ColorPickerSection
             label="描边"
             color={style.strokeColor}
@@ -698,7 +736,7 @@ export default function StylePanel({
   }
 
   return (
-    <aside className="style-panel" aria-label="绘图风格">
+    <aside className={`style-panel${nativeHost ? " in-native-panel" : ""}`} aria-label="绘图风格">
       <div className="selected-shape-actions">
         <ColorPickerSection
           label="描边"
