@@ -34,8 +34,12 @@ import {
   isDefaultInk,
   type PenType,
 } from "./lib/pens";
+import { installGrainElementRenderer } from "./lib/grainElementRenderer";
 import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
+
+// 注册场景内颗粒渲染钩子（必须在 Excalidraw 渲染前完成）
+installGrainElementRenderer();
 
 const STORAGE_KEY = "painter:scene:v1";
 const SMART_SHAPE_TOOL = "smart-shape";
@@ -49,6 +53,11 @@ function isSmartShapeTool(tool: ActiveTool): boolean {
 /** 判断工具是否为自研多笔刷 */
 function isPenTool(tool: ActiveTool): boolean {
   return tool.type === "custom" && tool.customType === PEN_TOOL;
+}
+
+/** 是否走自研颗粒渲染的笔（铅笔 / 蜡笔） */
+function isGrainPen(pen: PenType | null): boolean {
+  return pen === "pencil" || pen === "crayon";
 }
 
 const DEFAULT_DRAW_STYLE: DrawStyle = {
@@ -106,6 +115,8 @@ export default function App() {
   const penPendingPointsRef = useRef<Point[]>([]);
   const penPreviewRef = useRef<ExcalidrawElement | null>(null);
   const penRafRef = useRef<number | null>(null);
+  // 铅笔 / 蜡笔笔画种子：预览与最终元素共用，保证颗粒一致
+  const penSeedRef = useRef<number>(0);
 
   // 读取本地自动保存的场景
   useEffect(() => {
@@ -432,6 +443,12 @@ export default function App() {
         penPendingPointsRef.current = points;
         const api = excalidrawAPIRef.current;
         if (api) {
+          if (isGrainPen(activePenRef.current)) {
+            penSeedRef.current = Math.floor(Math.random() * 2 ** 31);
+          }
+          const customData = isGrainPen(activePenRef.current)
+            ? { grainKind: activePenRef.current, grainSeed: penSeedRef.current }
+            : undefined;
           const preview =
             activePenRef.current === "highlighter"
               ? buildHighlighterStrokeElement(
@@ -445,6 +462,8 @@ export default function App() {
                   api.getAppState(),
                   pen,
                   randomPenId(),
+                  undefined,
+                  customData,
                 );
           penPreviewRef.current = preview;
           if (preview) {
@@ -519,6 +538,13 @@ export default function App() {
                     api.getAppState(),
                     penPreset,
                     preview.id,
+                    undefined,
+                    isGrainPen(pen)
+                      ? {
+                          grainKind: pen,
+                          grainSeed: penSeedRef.current,
+                        }
+                      : undefined,
                   );
             if (!next) return;
             penPreviewRef.current = next;
@@ -619,7 +645,7 @@ export default function App() {
     // 荧光笔：平头轮廓元素（预览阶段已是同构元素，这里重建最终轮廓收尾）；
     // 其余笔：整条轨迹固化成 freedraw 元素
     const preset = PEN_PRESETS[pen];
-    const finalElement =
+    const baseElement =
       pen === "highlighter"
         ? buildHighlighterStrokeElement(
             points,
@@ -628,7 +654,7 @@ export default function App() {
             randomPenId(),
           )
         : buildFreedrawElement(points, api.getAppState(), preset, randomPenId());
-    if (!finalElement) {
+    if (!baseElement) {
       api.updateScene({
         elements: withoutPreview,
         captureUpdate: CaptureUpdateAction.NEVER,
@@ -636,6 +662,15 @@ export default function App() {
       penPreviewRef.current = null;
       return;
     }
+    const finalElement = isGrainPen(pen)
+      ? {
+          ...baseElement,
+          customData: {
+            grainKind: pen,
+            grainSeed: penSeedRef.current,
+          },
+        }
+      : baseElement;
     api.updateScene({
       elements: [...withoutPreview, finalElement],
       captureUpdate: CaptureUpdateAction.IMMEDIATELY,

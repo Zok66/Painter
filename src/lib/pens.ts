@@ -74,22 +74,22 @@ export const PEN_PRESETS: Record<PenType, PenPreset> = {
   pencil: {
     key: "pencil",
     name: "铅笔",
-    desc: "颗粒磨砂感，略透明",
+    desc: "自研石墨颗粒、毛边与压感",
     strokeWidth: 1.9,
     variability: "variable",
     simulatePressure: false,
     streamline: 0.24,
-    opacity: 72,
+    opacity: 100,
   },
   crayon: {
     key: "crayon",
     name: "蜡笔",
-    desc: "蜡质颗粒白斑，边缘碎裂",
+    desc: "自研蜡质厚涂、孔洞与混色",
     strokeWidth: 13,
     variability: "constant",
     simulatePressure: false,
     streamline: 0.5,
-    opacity: 95,
+    opacity: 100,
     suggestColor: "#e03131",
   },
   highlighter: {
@@ -205,6 +205,7 @@ export function buildFreedrawElement(
   pen: PenPreset,
   id: string,
   strokeColor?: string,
+  customData?: Record<string, unknown>,
 ): ExcalidrawFreeDrawElement {
   let minX = Infinity;
   let minY = Infinity;
@@ -260,6 +261,7 @@ export function buildFreedrawElement(
       variability: pen.variability,
       streamline: pen.streamline,
     },
+    ...(customData ? { customData } : {}),
   } as unknown as ExcalidrawFreeDrawElement;
 }
 
@@ -517,5 +519,3 @@ export function buildHighlighterStrokeElement(
     lastCommittedPoint: null,
   } as unknown as ExcalidrawLineElement;
 }
-
-
