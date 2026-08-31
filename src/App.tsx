@@ -468,6 +468,21 @@ export default function App() {
     [applyNotebookState, loadPageById, toast],
   );
 
+  /**
+   * 强制 Excalidraw 走一次完整渲染管线。
+   * refresh() 在 0.18 只刷新 UI 层，不触发 canvas 重绘；纸张纹理是外部状态，
+   * Excalidraw 不知道它变了，必须用一次 updateScene 才能重绘。
+   * 这里回写当前元素（内容不变，仅换新数组引用），无视觉副作用，也不污染 appState。
+   */
+  const requestExcalidrawRedraw = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
+    api.updateScene({
+      elements: api.getSceneElementsIncludingDeleted(),
+      captureUpdate: CaptureUpdateAction.EVENTUALLY,
+    });
+  }, []);
+
   /** 换纸张：改索引 + 应用到渲染钩子，当前页才需要重绘 */
   const handleChangeTemplate = useCallback(
     (pageId: string, template: PaperTemplate) => {
@@ -483,10 +498,10 @@ export default function App() {
       });
       if (current.activePageId === pageId) {
         setPaperTemplate(template);
-        excalidrawAPIRef.current?.refresh();
+        requestExcalidrawRedraw();
       }
     },
-    [applyNotebookState],
+    [applyNotebookState, requestExcalidrawRedraw],
   );
 
   const handleToggleNotebook = useCallback(() => setNotebookOpen((v) => !v), []);
@@ -494,7 +509,8 @@ export default function App() {
   // 主题切换后纹理配色要跟着换，并重绘一次
   useEffect(() => {
     setPaperDark(isDark);
-    excalidrawAPIRef.current?.refresh();
+    requestExcalidrawRedraw();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark]);
 
   // 新建空白画布
