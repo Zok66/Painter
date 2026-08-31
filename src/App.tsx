@@ -513,20 +513,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark]);
 
-  // 新建空白画布
+  // 新建 = 在当前笔记本里新增一页，保留旧页。
+  // 与面板「新页面」完全同步，只是入口在工具栏上。
   const handleNew = useCallback(() => {
-    if (!excalidrawAPI) return;
-    // IMMEDIATELY：整场景替换必须进 undo 栈，否则一键就把内容全毁了且撤不回来
-    excalidrawAPI.updateScene({
-      elements: [],
-      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-    });
-    refocusCanvas();
-    // 场景已清空：立刻把空场景落盘到当前页，别等 600ms 防抖
-    // （用户可能在防抖触发前就切页/关页，旧内容会"复活"）
-    flushCurrentPage();
-    toast("已新建空白画布");
-  }, [excalidrawAPI, flushCurrentPage, toast]);
+    const current = notebookStateRef.current;
+    handleCreatePage(current.activeNotebookId, newPageTemplate);
+  }, [handleCreatePage, newPageTemplate]);
 
   // 打开 .excalidraw 文件
   const handleOpen = useCallback(

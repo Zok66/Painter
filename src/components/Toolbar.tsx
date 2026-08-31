@@ -105,7 +105,7 @@ export default function Toolbar(props: ToolbarProps) {
         <div className="divider" />
 
         {/* 主操作按钮组 —— 主按钮置首 */}
-        <button className="btn btn-primary" onClick={onNew} title="新建空白画布">
+        <button className="btn btn-primary" onClick={onNew} title="在当前笔记本新建一页（保留当前页）">
           新建
         </button>
         <button className="btn" onClick={handleOpenClick} title="打开 .excalidraw 文件">
