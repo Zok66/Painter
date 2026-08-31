@@ -17,6 +17,8 @@ export interface ToolbarActions {
   smartShapeActive: boolean;
   onSelectPen: (type: PenType) => void;
   activePen: PenType | null;
+  onFillBucket: () => void;
+  fillActive: boolean;
   isDark: boolean;
 }
 
@@ -38,6 +40,8 @@ export default function Toolbar(props: ToolbarProps) {
     smartShapeActive,
     onSelectPen,
     activePen,
+    onFillBucket,
+    fillActive,
     isDark,
     saving,
   } = props;
@@ -107,6 +111,21 @@ export default function Toolbar(props: ToolbarProps) {
 
         {/* 多笔刷：圆珠笔 / 钢笔 / 铅笔 / 荧光笔 */}
         <PenMenu activePen={activePen} onSelectPen={onSelectPen} />
+
+        {/* 油漆桶：笔迹填充 */}
+        <button
+          className={clsx("btn btn-fillbucket", fillActive && "active")}
+          onClick={onFillBucket}
+          title="油漆桶：点选封闭区域，用所选笔迹风格填充（再次点击退出）"
+        >
+          <span className="fillbucket-icon" aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M11.6 2.3a1 1 0 0 1 1.4 0l6.4 6.4a1 1 0 0 1 0 1.4l-7.1 7.1a2 2 0 0 1-2.8 0l-5-5a2 2 0 0 1 0-2.8l7.1-7.1zM12 4.4L5.9 10.5a.4.4 0 0 0 0 .1l5 5a.4.4 0 0 0 .2-.1l7-7-6.1-6.1z" />
+              <path d="M2 21.5c0-1.9 1.6-3.9 2.5-3.9s2.5 2 2.5 3.9a2.5 2.5 0 0 1-5 0z" />
+            </svg>
+          </span>
+          <span className="fillbucket-text">油漆桶</span>
+        </button>
 
         <div className="divider" />
 

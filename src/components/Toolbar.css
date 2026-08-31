@@ -180,6 +180,44 @@
   border-radius: 5px;
 }
 
+/* —— 油漆桶（笔迹填充）—— */
+.btn-fillbucket {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--painter-green-light);
+  border-color: var(--painter-green);
+  color: var(--painter-green-dark);
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.btn-fillbucket:hover:not(:disabled) {
+  background: #d9f5e2;
+}
+
+.btn-fillbucket.active {
+  background: var(--painter-green);
+  border-color: var(--painter-green);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+
+.fillbucket-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+}
+
+.fillbucket-text {
+  font-size: 13px;
+}
+
 .btn-link {
   text-decoration: none;
   display: inline-flex;

@@ -1,0 +1,97 @@
+/* 油漆桶填充风格条 —— 扁平、直角、绿色选中态、无阴影无渐变 */
+
+.fill-style-bar {
+  position: absolute;
+  top: 3.75rem;
+  left: 0.75rem;
+  z-index: 20;
+  box-sizing: border-box;
+  width: 13.5rem;
+  padding: 0.6rem;
+  background: var(--painter-bar);
+  border: 1px solid var(--painter-border);
+  border-radius: 0; /* 直角 */
+  font-family: inherit;
+  user-select: none;
+}
+
+.fill-style-bar-title {
+  margin-bottom: 0.45rem;
+  font-size: 0.75rem;
+  color: var(--painter-text-soft);
+}
+
+.fill-style-bar-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fill-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0; /* 直角 */
+  cursor: pointer;
+  text-align: left;
+  color: var(--painter-text);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.fill-option:hover {
+  background: var(--painter-hover);
+  border-color: var(--painter-border);
+}
+
+/* 选中态：鲜艳绿色实底 + 白字 */
+.fill-option.selected {
+  background: var(--painter-green);
+  border-color: var(--painter-green);
+  color: #fff;
+}
+
+.fill-option.selected:hover {
+  background: var(--painter-green-dark);
+  border-color: var(--painter-green-dark);
+}
+
+.fill-option-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 18px;
+  color: inherit;
+}
+
+.fill-option-label {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fill-option-check {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* —— 暗色适配 —— */
+[data-theme="dark"] .fill-style-bar {
+  background: #262626;
+  border-color: var(--painter-border-dark);
+}
+
+[data-theme="dark"] .fill-option {
+  color: #e6e6e6;
+}
+
+[data-theme="dark"] .fill-option:hover {
+  background: var(--painter-hover-dark);
+  border-color: var(--painter-border-dark);
+}

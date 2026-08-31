@@ -8,9 +8,11 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "test:fill": "node scripts/run_fill_tests.mjs",
     "postinstall": "node scripts/patch-excalidraw.mjs"
   },
   "dependencies": {
+    "@excalidraw/element": "^0.18.0-abeeaeb",
     "@excalidraw/excalidraw": "^0.18.0-abeeaeb",
     "polygon-clipping": "^0.15.7",
     "react": "^19.2.8",

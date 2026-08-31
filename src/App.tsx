@@ -17,7 +17,12 @@ import type {
   ActiveTool,
   PointerDownState,
 } from "@excalidraw/excalidraw/types";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type {
+  ExcalidrawElement,
+  NonDeletedExcalidrawElement,
+} from "@excalidraw/excalidraw/element/types";
+import type { GlobalPoint } from "@excalidraw/math";
+import { computeBucketFillPolygon } from "@excalidraw/element";
 import "@excalidraw/excalidraw/index.css";
 import Toolbar from "./components/Toolbar";
 import StylePanel, {
@@ -27,6 +32,7 @@ import StylePanel, {
   type StrokeWidthKey,
   type Roughness,
 } from "./components/StylePanel";
+import FillStyleBar from "./components/FillStyleBar";
 import { buildShapeElement, buildPreviewPolyline } from "./lib/buildShapeElement";
 import {
   PEN_PRESETS,
@@ -37,6 +43,12 @@ import {
   isDefaultInk,
   type PenType,
 } from "./lib/pens";
+import {
+  buildFillElements,
+  hitFillGroup,
+  restyleFillGroup,
+  type FillKind,
+} from "./lib/fillStrokes";
 import { installGrainElementRenderer } from "./lib/grainElementRenderer";
 import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
@@ -47,6 +59,17 @@ installGrainElementRenderer();
 const STORAGE_KEY = "painter:scene:v1";
 const SMART_SHAPE_TOOL = "smart-shape";
 const PEN_TOOL = "pen-brush";
+const FILL_TOOL = "fill-bucket";
+const FILL_KIND_KEY = "painter-fill-kind-v1";
+
+const FILL_KINDS: FillKind[] = [
+  "solid",
+  "ballpoint",
+  "fountain",
+  "pencil",
+  "crayon",
+  "highlighter",
+];
 
 /** 判断工具是否为智能画笔（自研自定义工具） */
 function isSmartShapeTool(tool: ActiveTool): boolean {
@@ -56,6 +79,22 @@ function isSmartShapeTool(tool: ActiveTool): boolean {
 /** 判断工具是否为自研多笔刷 */
 function isPenTool(tool: ActiveTool): boolean {
   return tool.type === "custom" && tool.customType === PEN_TOOL;
+}
+
+/** 判断工具是否为自研油漆桶（笔迹填充） */
+function isFillTool(tool: ActiveTool): boolean {
+  return tool.type === "custom" && tool.customType === FILL_TOOL;
+}
+
+/** 从 localStorage 恢复填充风格选择 */
+function loadFillKind(): FillKind {
+  try {
+    const raw = localStorage.getItem(FILL_KIND_KEY);
+    if (raw && FILL_KINDS.includes(raw as FillKind)) return raw as FillKind;
+  } catch {
+    /* 忽略 */
+  }
+  return "solid";
 }
 
 /** 是否走自研颗粒渲染的笔（铅笔 / 蜡笔） */
@@ -144,6 +183,9 @@ export default function App() {
   const [smartShapeActive, setSmartShapeActive] = useState(false);
   const [activePen, setActivePen] = useState<PenType | null>(null);
   const activePenRef = useRef<PenType | null>(null);
+  // 油漆桶（笔迹填充）：激活状态 + 填充风格（localStorage 持久化）
+  const [fillActive, setFillActive] = useState(false);
+  const [fillKind, setFillKind] = useState<FillKind>(loadFillKind);
   // 更多画笔的笔尖粗细档位（与智能画笔的 strokeWidthKey 相互独立）
   const [penWidthKey, setPenWidthKey] = useState<StrokeWidthKey>("medium");
   const penWidthRef = useRef<StrokeWidthKey>("medium");
@@ -184,6 +226,9 @@ export default function App() {
         activePenRef.current = null;
         setActivePen(null);
       }
+      if (fillActive && !isFillTool(appState.activeTool)) {
+        setFillActive(false);
+      }
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         try {
@@ -194,7 +239,7 @@ export default function App() {
         }
       }, 600);
     },
-    [smartShapeActive],
+    [smartShapeActive, fillActive],
   );
 
   const toast = useCallback((message: string, type: "success" | "error" = "success") => {
@@ -471,6 +516,105 @@ export default function App() {
     [toast, handleExitPen],
   );
 
+  // 启用油漆桶（笔迹填充）：点击画布封闭区域铺满所选笔迹；再次点击退出
+  const handleFillBucket = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
+    if (fillActive) {
+      setFillActive(false);
+      api.setActiveTool({ type: "selection" });
+      toast("已退出油漆桶");
+      return;
+    }
+    // 与智能画笔 / 多笔刷互斥
+    setSmartShapeActive(false);
+    activePenRef.current = null;
+    setActivePen(null);
+    setFillActive(true);
+    api.setActiveTool({ type: "custom", customType: FILL_TOOL, locked: true });
+    toast("油漆桶已启用：点选封闭区域，用所选笔迹风格填充");
+  }, [toast, fillActive]);
+
+  // 切换填充风格并持久化
+  const handleFillKindChange = useCallback((kind: FillKind) => {
+    setFillKind(kind);
+    try {
+      localStorage.setItem(FILL_KIND_KEY, kind);
+    } catch {
+      /* 忽略 */
+    }
+  }, []);
+
+  // 油漆桶点击：命中已有填充组 → 换色；否则计算封闭区域 → 生成笔迹填充组
+  const handleFillClick = useCallback((x: number, y: number) => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
+    // 完整数组（含 deleted）用于 z 序回写；存活元素用于几何计算
+    const all = api.getSceneElementsIncludingDeleted() as ExcalidrawElement[];
+    const live = all.filter((el) => !el.isDeleted);
+    const color = drawStyleRef.current.strokeColor;
+
+    // 1. 点击已有填充组成员 → 全组换当前色，不重新生成、不叠加
+    const hitGroup = hitFillGroup(x, y, live);
+    if (hitGroup) {
+      api.updateScene({
+        elements: restyleFillGroup(hitGroup, color, all),
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      return;
+    }
+
+    // 2. 计算点击处的封闭区域（原生公开算法）
+    const elementsMap = new Map(
+      (live as NonDeletedExcalidrawElement[]).map((el) => [el.id, el as ExcalidrawElement]),
+    );
+    const result = computeBucketFillPolygon({
+      point: [x, y] as GlobalPoint,
+      elements: live as readonly NonDeletedExcalidrawElement[],
+      elementsMap,
+    });
+    if (!result.ok) {
+      if (result.reason === "too_complex") {
+        toast("区域过于复杂，无法填充", "error");
+      } else {
+        toast("未找到可填充的封闭区域", "error");
+      }
+      return;
+    }
+
+    // 3. 生成填充元素组（keyhole 单环 → 排线/多边形）
+    const groupId = `fillgrp-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const newElements = buildFillElements({
+      scenePoints: result.scenePoints,
+      kind: fillKind,
+      color,
+      groupId,
+      seed: Math.floor(Math.random() * 2 ** 31),
+      appState: api.getAppState(),
+    });
+    if (newElements.length === 0) return; // 退化区域：静默返回，不提交空组
+
+    // 4. 按原生 insertion 锚点解析 z 序（above = 锚点后一位）
+    const anchorIndex = all.findIndex((el) => el.id === result.insertion.elementId);
+    const insertAt =
+      anchorIndex >= 0
+        ? result.insertion.placement === "above"
+          ? anchorIndex + 1
+          : anchorIndex
+        : all.length;
+    const next = [
+      ...all.slice(0, insertAt),
+      ...newElements,
+      ...all.slice(insertAt),
+    ];
+    api.updateScene({
+      elements: next,
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+  }, [fillKind, toast]);
+
   // Shift+X 激活智能画笔
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -486,6 +630,12 @@ export default function App() {
   // 自研智能画笔：完全自己采集轨迹，不经过 Excalidraw 的 freedraw/autoshape
   const handlePointerDown = useCallback(
     (activeTool: ActiveTool, pointerDownState: PointerDownState) => {
+      // 油漆桶：单击即填充，不拖拽采集
+      if (isFillTool(activeTool)) {
+        handleFillClick(pointerDownState.origin.x, pointerDownState.origin.y);
+        return;
+      }
+
       if (
         activeTool.type === "custom" &&
         activeTool.customType === SMART_SHAPE_TOOL
@@ -562,7 +712,7 @@ export default function App() {
         }
       }
     },
-    [],
+    [handleFillClick],
   );
 
   const handlePointerUpdate = useCallback(
@@ -787,9 +937,13 @@ export default function App() {
       smartShapeActive,
       onSelectPen: handleSelectPen,
       activePen,
+      onFillBucket: handleFillBucket,
+      fillActive,
+      fillKind,
+      onFillKindChange: handleFillKindChange,
       isDark,
     }),
-    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, handleSelectPen, activePen, isDark],
+    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, handleSelectPen, activePen, handleFillBucket, fillActive, fillKind, handleFillKindChange, isDark],
   );
 
   // 把属性面板挂到项目自有的 .workspace 容器（绝对定位浮层），
@@ -799,13 +953,13 @@ export default function App() {
   const panelHost = useMemo(() => {
     if (typeof document === "undefined") return null;
     return document.querySelector(".workspace") ?? document.body;
-  }, [ready, activePen, smartShapeActive]);
+  }, [ready, activePen, smartShapeActive, fillActive]);
 
   return (
     <div
       className={`app${smartShapeActive ? " smart-shape-active" : ""}${
         activePen ? " pen-active" : ""
-      }`}
+      }${fillActive ? " fill-bucket-active" : ""}`}
       data-theme={isDark ? "dark" : "light"}
       style={{ "--pen-cursor": penCursor(activePen) } as React.CSSProperties}
     >
@@ -825,6 +979,12 @@ export default function App() {
               onPenTypeChange={handleSelectPen}
               nativeHost={false}
             />,
+            panelHost,
+          )}
+        {fillActive &&
+          panelHost &&
+          createPortal(
+            <FillStyleBar kind={fillKind} onChange={handleFillKindChange} />,
             panelHost,
           )}
         <main className="canvas-wrap">
