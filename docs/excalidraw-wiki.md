@@ -294,7 +294,31 @@ Douglas-Peucker 抽稀 → 段四边形切割 → 布尔并集，生成等宽平
 - 笔刷预设持久化：`localStorage`（key `painter-pen-presets-v1`）
 - 项目场景持久化：key `painter:scene:v1`（[src/App.tsx](../src/App.tsx) `STORAGE_KEY`）
 
----
+### 5.6 自研笔迹填充（油漆桶，[src/lib/fillStrokes.ts](../src/lib/fillStrokes.ts)）
+
+自研 `custom` 工具（`customType: "fill-bucket"`），复用**原生公开算法**计算封闭区域，
+再按风格生成笔迹元素组：
+
+- **区域计算**：`computeBucketFillPolygon()` 从 `@excalidraw/element` 包导入
+  （主包未 re-export，需显式依赖 `"@excalidraw/element": "^0.18.0-abeeaeb"`，锁同版本号）。
+  返回 `scenePoints`（keyhole 单环，洞经零宽桥接拼成一个环）与 `insertion`（z 序锚点）。
+- **六种风格**（`FillStyleBar` 选择条，localStorage key `painter-fill-kind-v1`）：
+  - `solid` / `highlighter`：单个 `polygon: true` line 多边形（描边=填充色，无框视觉），
+    opacity 分别 100 / 32；
+  - `ballpoint` / `fountain` / `pencil` / `crayon`：even-odd 扫描线生成水平排线，
+    每条排线 = 一条 freedraw 元素（复用 `pens.ts` 的 `PEN_PRESETS` 手感）；
+    pencil/crayon 额外挂 `customData.grainKind/grainSeed` 走颗粒渲染钩子（§5.3）。
+- **排线算法**（`scanFillSpans`）：对每条扫描线求所有边交点 → 排序 → 奇偶配对；
+  keyhole 桥接产生的零宽/相邻交点自然退化（区间 < 0.5px 丢弃），**洞内不落笔**。
+  每条排线叠加低频随机游走抖动（`mulberry32` 确定性随机，每线独立种子）。
+- **密度上限**：排线 > 300 时按比例放大间距重扫（`MAX_FILL_LINES`）。
+- **成组与换色**：组内元素共享 `groupIds` 与 `customData.fillGroup/fillKind` 标记；
+  点击命中已有填充组（`hitFillGroup`：纯色/荧光射线法、排线按到中心线距离）
+  → `restyleFillGroup` 全组换当前色，不重新生成；点空隙 → 叠加新组（手绘叠色）。
+- **z 序插入**：用 `getSceneElementsIncludingDeleted()`（完整数组）+ `insertion`
+  解析插入位（`above` = 锚点 +1）；`getSceneElements()` 只返回存活元素，
+  拿它回写会物理丢弃 deleted 元素。
+- 单测：`npm run test:fill`（经 Vite SSR 管线加载，见踩坑 #15）。
 
 ## 6. "检测不到 XX" 排查三步法
 
@@ -329,6 +353,9 @@ Douglas-Peucker 抽稀 → 段四边形切割 → 布尔并集，生成等宽平
 | 12 | ⋯ 下拉里找不到"套索选择" | 仅完整样式面板模式（full styles panel）渲染该条目，紧凑模式下走 selection 长按 |
 | 13 | 主菜单多了"在画布上查找/帮助/社交链接"想关掉 | 这三个条目在 DefaultMainMenu 兜底版中无开关，需自定义 `<MainMenu>` children 接管 |
 | 14 | 锁定按钮（Q）莫名高亮、形状画完不回退选择工具 | `activeTool.locked` 为 true；本项目自定义画笔/智能画笔 `setActiveTool({ locked: true })` 也会点亮它，退出时记得切回 `setActiveTool({ type: "selection" })` |
+| 15 | Node 下跑不了含 polygon-clipping 的单测 | 它是 CJS/UMD 包，原生 ESM named import 失败；用 Vite SSR 管线加载测试（`scripts/run_fill_tests.mjs`，`npm run test:fill`），与产品同一套解析 |
+| 16 | 油漆桶 z 序插错 / 撤销后元素复活 | `getSceneElements()` 只返回存活元素，回写会物理丢弃 deleted 元素、且找不到 deleted 锚点；完整数组用 `getSceneElementsIncludingDeleted()` |
+| 17 | `browser_evaluate`/异步脚本拿不到返回值 | 返回 Promise 会得到 undefined，Excalidraw 的 React 状态更新也在下一帧才落地——自动化验证要把"操作"和"断言"拆成多次同步执行，或用 Vite SSR 跑纯函数单测 |
 
 ---
 
