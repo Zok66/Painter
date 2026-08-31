@@ -94,9 +94,59 @@ function patchExcalidrawRender(): Plugin {
   }
 }
 
+const PAPER_MARKER = "__painterPaperRender";
+
+/**
+ * 纸张纹理（空白 / 横线 / 方格 / 点阵）注入。
+ *
+ * 钩子打在 _renderStaticScene 里 ctx.scale(zoom) 之后、原生 strokeGrid 之前。
+ * 这个位置让纹理落在背景层：元素盖在它上面，原生网格（若开启）又盖在它下面一层，
+ * 且导出走的是同一条渲染路径，所以导出的 PNG / SVG 自带纹理。
+ *
+ * dev（未压缩）与 prod（压缩）两种产物形态不同，分别用各自的锚点；
+ * 两边都匹配不上时原样返回，最坏情况只是没有纹理，不会破坏渲染。
+ */
+function patchPaperTexture(): Plugin {
+  return {
+    name: "painter-patch-paper-texture",
+    transform(code, id) {
+      if (!id.includes("@excalidraw/excalidraw/dist/")) return;
+      if (code.includes(PAPER_MARKER)) return;
+
+      // dev：
+      //   context.scale(appState.zoom.value, appState.zoom.value);
+      //   if (renderGrid) {
+      const devRe =
+        /context\.scale\(appState\.zoom\.value,\s*appState\.zoom\.value\);(\s*)if \(renderGrid\) \{/;
+      if (devRe.test(code)) {
+        return code.replace(
+          devRe,
+          (_m, gap) =>
+            `context.scale(appState.zoom.value, appState.zoom.value);${gap}` +
+            `if (typeof window !== "undefined" && window.${PAPER_MARKER}) { window.${PAPER_MARKER}(context, appState.scrollX, appState.scrollY, appState.zoom, normalizedWidth, normalizedHeight); }${gap}` +
+            `if (renderGrid) {`,
+        );
+      }
+
+      // prod：
+      //   E.scale(d.zoom.value,d.zoom.value),n&&Hf(E,d.gridSize,d.gridStep,d.scrollX,d.scrollY,d.zoom,o.theme,s/d.zoom.value,u/d.zoom.value)
+      // 变量名是压缩生成的，用捕获组把上下文变量和宽高变量一起取出来再拼回去。
+      const prodRe =
+        /([A-Za-z_$][\w$]*)\.scale\(([A-Za-z_$][\w$]*)\.zoom\.value,\2\.zoom\.value\),([A-Za-z_$][\w$]*)&&([A-Za-z_$][\w$]*)\(\1,\2\.gridSize,\2\.gridStep,\2\.scrollX,\2\.scrollY,\2\.zoom,([^,]+),([A-Za-z_$][\w$]*)\/\2\.zoom\.value,([A-Za-z_$][\w$]*)\/\2\.zoom\.value\)/;
+      return code.replace(
+        prodRe,
+        (_m, ctx, app, flag, fn, theme, w, h) =>
+          `${ctx}.scale(${app}.zoom.value,${app}.zoom.value),` +
+          `window.${PAPER_MARKER}&&window.${PAPER_MARKER}(${ctx},${app}.scrollX,${app}.scrollY,${app}.zoom,${w},${h}),` +
+          `${flag}&&${fn}(${ctx},${app}.gridSize,${app}.gridStep,${app}.scrollX,${app}.scrollY,${app}.zoom,${theme},${w}/${app}.zoom.value,${h}/${app}.zoom.value)`,
+      );
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), patchExcalidrawRender()],
+  plugins: [react(), patchExcalidrawRender(), patchPaperTexture()],
   // Electron 用 file:// 协议加载本地资源,必须用相对路径
   base: './',
   // Excalidraw 的补丁通过 transform 插件注入,依赖必须走源码转换而不是

@@ -6,6 +6,7 @@ import {
   exportToSvg,
   serializeAsJSON,
   loadFromBlob,
+  restoreElements,
   THEME,
   CaptureUpdateAction,
 } from "@excalidraw/excalidraw";
@@ -50,13 +51,32 @@ import {
   type FillKind,
 } from "./lib/fillStrokes";
 import { installGrainElementRenderer } from "./lib/grainElementRenderer";
+import {
+  installPaperTextureRenderer,
+  setPaperDark,
+  setPaperTemplate,
+} from "./lib/paperTexture";
+import {
+  activePage,
+  createNotebook,
+  createPage,
+  deletePageScene,
+  findPage,
+  loadNotebookState,
+  loadPageScene,
+  saveNotebookState,
+  savePageScene,
+  PAPER_LABELS,
+  type NotebookState,
+  type PaperTemplate,
+} from "./lib/notebook";
+import NotebookPanel from "./components/NotebookPanel";
 import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
 
-// 注册场景内颗粒渲染钩子（必须在 Excalidraw 渲染前完成）
+// 注册场景内渲染钩子（必须在 Excalidraw 渲染前完成）
 installGrainElementRenderer();
-
-const STORAGE_KEY = "painter:scene:v1";
+installPaperTextureRenderer();
 const SMART_SHAPE_TOOL = "smart-shape";
 const PEN_TOOL = "pen-brush";
 const FILL_TOOL = "fill-bucket";
@@ -177,6 +197,11 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [initialData, setInitialData] = useState<any>(null);
   const [ready, setReady] = useState(false);
+  // 笔记本：索引 + 每页场景。ref 与 state 同步，供防抖保存 / 切页时取当前页
+  const [notebookState, setNotebookState] = useState<NotebookState>(loadNotebookState);
+  const notebookStateRef = useRef<NotebookState>(notebookState);
+  const [notebookOpen, setNotebookOpen] = useState(false);
+  const [newPageTemplate, setNewPageTemplate] = useState<PaperTemplate>("blank");
   const [drawStyle, setDrawStyle] = useState<DrawStyle>(DEFAULT_DRAW_STYLE);
   const drawStyleRef = useRef<DrawStyle>(DEFAULT_DRAW_STYLE);
   const [styleReady, setStyleReady] = useState(false);
@@ -205,14 +230,12 @@ export default function App() {
   // 铅笔 / 蜡笔笔画种子：预览与最终元素共用，保证颗粒一致
   const penSeedRef = useRef<number>(0);
 
-  // 读取本地自动保存的场景
+  // 启动时载入上次打开的页面（首次进入会顺带把旧版单场景迁成第一页）
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setInitialData(JSON.parse(raw));
-    } catch {
-      /* 忽略损坏的本地数据 */
-    }
+    const state = notebookStateRef.current;
+    const scene = loadPageScene(state.activePageId);
+    if (scene) setInitialData(scene);
+    setPaperTemplate(activePage(state).template);
   }, []);
 
   // 自动保存到 localStorage(防抖)
@@ -233,7 +256,7 @@ export default function App() {
       debounceRef.current = setTimeout(() => {
         try {
           const json = serializeAsJSON(elements, appState, files, "local");
-          localStorage.setItem(STORAGE_KEY, json);
+          savePageScene(notebookStateRef.current.activePageId, json);
         } catch {
           /* 忽略写入错误 */
         }
@@ -248,6 +271,232 @@ export default function App() {
     if (type === "error") console.error(message);
   }, [excalidrawAPI]);
 
+  // —— 笔记本 ——
+
+  /** 统一改索引：ref、state、localStorage 一起更新 */
+  const applyNotebookState = useCallback((next: NotebookState) => {
+    notebookStateRef.current = next;
+    setNotebookState(next);
+    saveNotebookState(next);
+  }, []);
+
+  /**
+   * 立刻把当前场景写回当前页。
+   * 自动保存有 600ms 防抖，切页 / 新建 / 删除前必须手动落盘，
+   * 否则队列里的改动会随页面切换一起丢掉。
+   */
+  const flushCurrentPage = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    try {
+      const json = serializeAsJSON(
+        api.getSceneElements() as readonly ExcalidrawElement[],
+        api.getAppState(),
+        api.getFiles(),
+        "local",
+      );
+      savePageScene(notebookStateRef.current.activePageId, json);
+    } catch {
+      /* 忽略写入错误 */
+    }
+  }, []);
+
+  /** 把某一页的场景灌进画布（只管加载，不碰索引状态） */
+  const loadPageById = useCallback(
+    (pageId: string, template: PaperTemplate, title?: string) => {
+      const api = excalidrawAPIRef.current;
+      if (!api) return;
+      setPaperTemplate(template);
+      const scene = loadPageScene(pageId) as {
+        elements?: ExcalidrawElement[];
+        files?: Record<string, BinaryFileData>;
+      } | null;
+      // 存的是序列化格式，取出来必须 restore 才能安全回灌
+      const elements = scene?.elements
+        ? restoreElements(scene.elements, null, { repairBindings: true })
+        : [];
+      api.updateScene({ elements, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+      const files = Object.values(scene?.files ?? {}) as BinaryFileData[];
+      if (files.length) api.addFiles(files);
+      api.refresh();
+      if (title) document.title = `${title} – Painter 画板`;
+    },
+    [],
+  );
+
+  const handleSelectPage = useCallback(
+    (notebookId: string, pageId: string) => {
+      const current = notebookStateRef.current;
+      if (current.activeNotebookId === notebookId && current.activePageId === pageId) {
+        return;
+      }
+      flushCurrentPage();
+      applyNotebookState({
+        ...current,
+        activeNotebookId: notebookId,
+        activePageId: pageId,
+      });
+      const page = findPage(current, pageId);
+      loadPageById(pageId, page?.template ?? "blank", page?.title);
+      refocusCanvas();
+    },
+    [applyNotebookState, flushCurrentPage, loadPageById],
+  );
+
+  const handleCreateNotebook = useCallback(
+    (title: string) => {
+      const current = notebookStateRef.current;
+      flushCurrentPage();
+      const notebook = createNotebook(title, current.notebooks.length);
+      applyNotebookState({
+        ...current,
+        notebooks: [...current.notebooks, notebook],
+        activeNotebookId: notebook.id,
+        activePageId: notebook.pages[0].id,
+      });
+      loadPageById(notebook.pages[0].id, notebook.pages[0].template, notebook.pages[0].title);
+      toast(`已创建笔记本「${title}」`);
+    },
+    [applyNotebookState, flushCurrentPage, loadPageById, toast],
+  );
+
+  const handleRenameNotebook = useCallback(
+    (id: string, title: string) => {
+      const current = notebookStateRef.current;
+      applyNotebookState({
+        ...current,
+        notebooks: current.notebooks.map((nb) =>
+          nb.id === id ? { ...nb, title, updatedAt: Date.now() } : nb,
+        ),
+      });
+    },
+    [applyNotebookState],
+  );
+
+  const handleDeleteNotebook = useCallback(
+    (id: string) => {
+      const current = notebookStateRef.current;
+      const target = current.notebooks.find((nb) => nb.id === id);
+      if (!target || current.notebooks.length <= 1) return;
+      target.pages.forEach((p) => deletePageScene(p.id));
+      const notebooks = current.notebooks.filter((nb) => nb.id !== id);
+      const isCurrent = target.pages.some((p) => p.id === current.activePageId);
+      if (isCurrent) {
+        const nb = notebooks[0];
+        const page = nb.pages[0];
+        applyNotebookState({
+          ...current,
+          notebooks,
+          activeNotebookId: nb.id,
+          activePageId: page.id,
+        });
+        loadPageById(page.id, page.template, page.title);
+      } else {
+        applyNotebookState({ ...current, notebooks });
+      }
+      toast(`已删除笔记本「${target.title}」`);
+    },
+    [applyNotebookState, loadPageById, toast],
+  );
+
+  const handleCreatePage = useCallback(
+    (notebookId: string, template: PaperTemplate) => {
+      const current = notebookStateRef.current;
+      flushCurrentPage();
+      const notebook = current.notebooks.find((nb) => nb.id === notebookId);
+      if (!notebook) return;
+      const page = createPage(`第 ${notebook.pages.length + 1} 页`, template);
+      applyNotebookState({
+        ...current,
+        activeNotebookId: notebookId,
+        activePageId: page.id,
+        notebooks: current.notebooks.map((nb) =>
+          nb.id === notebookId
+            ? { ...nb, pages: [...nb.pages, page], updatedAt: Date.now() }
+            : nb,
+        ),
+      });
+      loadPageById(page.id, page.template, page.title);
+      toast(`已新建${PAPER_LABELS[template]}页面`);
+    },
+    [applyNotebookState, flushCurrentPage, loadPageById, toast],
+  );
+
+  const handleRenamePage = useCallback(
+    (id: string, title: string) => {
+      const current = notebookStateRef.current;
+      applyNotebookState({
+        ...current,
+        notebooks: current.notebooks.map((nb) => ({
+          ...nb,
+          pages: nb.pages.map((p) =>
+            p.id === id ? { ...p, title, updatedAt: Date.now() } : p,
+          ),
+        })),
+      });
+    },
+    [applyNotebookState],
+  );
+
+  const handleDeletePage = useCallback(
+    (pageId: string) => {
+      const current = notebookStateRef.current;
+      const notebook = current.notebooks.find((nb) => nb.id === current.activeNotebookId);
+      if (!notebook || notebook.pages.length <= 1) return;
+      const target = notebook.pages.find((p) => p.id === pageId);
+      if (!target) return;
+      deletePageScene(pageId);
+      const pages = notebook.pages.filter((p) => p.id !== pageId);
+      const notebooks = current.notebooks.map((nb) =>
+        nb.id === notebook.id ? { ...nb, pages, updatedAt: Date.now() } : nb,
+      );
+      if (current.activePageId === pageId) {
+        // 删的是当前页：落到原位置的相邻页（删尾页时退到最后一页）
+        const index = notebook.pages.findIndex((p) => p.id === pageId);
+        const nextPage = pages[Math.min(index, pages.length - 1)];
+        applyNotebookState({ ...current, notebooks, activePageId: nextPage.id });
+        loadPageById(nextPage.id, nextPage.template, nextPage.title);
+      } else {
+        applyNotebookState({ ...current, notebooks });
+      }
+      toast(`已删除页面「${target.title}」`);
+    },
+    [applyNotebookState, loadPageById, toast],
+  );
+
+  /** 换纸张：改索引 + 应用到渲染钩子，当前页才需要重绘 */
+  const handleChangeTemplate = useCallback(
+    (pageId: string, template: PaperTemplate) => {
+      const current = notebookStateRef.current;
+      applyNotebookState({
+        ...current,
+        notebooks: current.notebooks.map((nb) => ({
+          ...nb,
+          pages: nb.pages.map((p) =>
+            p.id === pageId ? { ...p, template, updatedAt: Date.now() } : p,
+          ),
+        })),
+      });
+      if (current.activePageId === pageId) {
+        setPaperTemplate(template);
+        excalidrawAPIRef.current?.refresh();
+      }
+    },
+    [applyNotebookState],
+  );
+
+  const handleToggleNotebook = useCallback(() => setNotebookOpen((v) => !v), []);
+
+  // 主题切换后纹理配色要跟着换，并重绘一次
+  useEffect(() => {
+    setPaperDark(isDark);
+    excalidrawAPIRef.current?.refresh();
+  }, [isDark]);
+
   // 新建空白画布
   const handleNew = useCallback(() => {
     if (!excalidrawAPI) return;
@@ -257,13 +506,11 @@ export default function App() {
       captureUpdate: CaptureUpdateAction.IMMEDIATELY,
     });
     refocusCanvas();
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* 忽略 */
-    }
+    // 场景已清空：立刻把空场景落盘到当前页，别等 600ms 防抖
+    // （用户可能在防抖触发前就切页/关页，旧内容会"复活"）
+    flushCurrentPage();
     toast("已新建空白画布");
-  }, [excalidrawAPI, toast]);
+  }, [excalidrawAPI, flushCurrentPage, toast]);
 
   // 打开 .excalidraw 文件
   const handleOpen = useCallback(
@@ -941,9 +1188,11 @@ export default function App() {
       fillActive,
       fillKind,
       onFillKindChange: handleFillKindChange,
+      notebookOpen,
+      onToggleNotebook: handleToggleNotebook,
       isDark,
     }),
-    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, handleSelectPen, activePen, handleFillBucket, fillActive, fillKind, handleFillKindChange, isDark],
+    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, handleSelectPen, activePen, handleFillBucket, fillActive, fillKind, handleFillKindChange, notebookOpen, handleToggleNotebook, isDark],
   );
 
   // 把属性面板挂到项目自有的 .workspace 容器（绝对定位浮层），
@@ -965,6 +1214,22 @@ export default function App() {
     >
       <Toolbar {...actions} saving={saving} />
       <div className="workspace">
+        {notebookOpen && (
+          <NotebookPanel
+            state={notebookState}
+            newPageTemplate={newPageTemplate}
+            onNewPageTemplateChange={setNewPageTemplate}
+            onSelectPage={handleSelectPage}
+            onCreateNotebook={handleCreateNotebook}
+            onRenameNotebook={handleRenameNotebook}
+            onDeleteNotebook={handleDeleteNotebook}
+            onCreatePage={handleCreatePage}
+            onRenamePage={handleRenamePage}
+            onDeletePage={handleDeletePage}
+            onChangeTemplate={handleChangeTemplate}
+            onClose={handleToggleNotebook}
+          />
+        )}
         {(smartShapeActive || activePen) &&
           panelHost &&
           createPortal(

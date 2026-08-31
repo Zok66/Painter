@@ -19,6 +19,8 @@ export interface ToolbarActions {
   activePen: PenType | null;
   onFillBucket: () => void;
   fillActive: boolean;
+  notebookOpen: boolean;
+  onToggleNotebook: () => void;
   isDark: boolean;
 }
 
@@ -42,6 +44,8 @@ export default function Toolbar(props: ToolbarProps) {
     activePen,
     onFillBucket,
     fillActive,
+    notebookOpen,
+    onToggleNotebook,
     isDark,
     saving,
   } = props;
@@ -72,6 +76,31 @@ export default function Toolbar(props: ToolbarProps) {
             Painter <em>画板</em>
           </span>
         </div>
+
+        <div className="divider" />
+
+        {/* 我的笔记本：笔记本 / 页面 / 纸张管理 */}
+        <button
+          className={clsx("btn btn-notebook", notebookOpen && "active")}
+          onClick={onToggleNotebook}
+          title="我的笔记本：管理笔记本、页面与纸张"
+          aria-pressed={notebookOpen}
+        >
+          <span className="notebook-icon" aria-hidden>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            >
+              <path d="M6 3h10l3 3v15H6z" strokeLinejoin="round" />
+              <path d="M9.5 9.5h5M9.5 13.5h5" strokeLinecap="round" />
+            </svg>
+          </span>
+          <span className="notebook-text">笔记本</span>
+        </button>
 
         <div className="divider" />
 

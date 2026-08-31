@@ -1,0 +1,361 @@
+/* 我的笔记本面板 —— 沿用画板风格：扁平、直角、无阴影无渐变 */
+
+.notebook-panel {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 30;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 18rem;
+  max-height: calc(100% - 1rem);
+  background: var(--painter-bar);
+  border: 1px solid var(--painter-border);
+  border-radius: 0; /* 直角 */
+  font-family: inherit;
+  font-size: 13px;
+  user-select: none;
+}
+
+.notebook-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--painter-border);
+}
+
+.notebook-panel-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--painter-text);
+}
+
+.notebook-panel-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.7rem;
+}
+
+.notebook-panel-footer {
+  padding: 0.55rem 0.7rem;
+  border-top: 1px solid var(--painter-border);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--painter-text-soft);
+}
+
+.notebook-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.7rem;
+  color: var(--painter-text-soft);
+}
+
+.notebook-icon-btn {
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--painter-text-soft);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.notebook-icon-btn:hover:not(:disabled) {
+  background: var(--painter-hover);
+  color: var(--painter-text);
+}
+
+.notebook-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* —— 分区 —— */
+
+.notebook-section + .notebook-section {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--painter-border);
+}
+
+.notebook-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--painter-text-soft);
+}
+
+.notebook-section-title button {
+  padding: 0.15rem 0.35rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: var(--painter-text-soft);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.notebook-section-title button:hover {
+  border-color: var(--painter-border);
+  background: var(--painter-hover);
+  color: var(--painter-text);
+}
+
+/* —— 笔记本列表 —— */
+
+.notebook-list,
+.page-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notebook-list-item,
+.page-list-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-left: 3px solid transparent;
+}
+
+.notebook-list-item.active,
+.page-list-item.active {
+  border-left-color: var(--painter-green);
+  background: var(--painter-hover);
+}
+
+.notebook-list-select,
+.page-list-select {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.35rem 0.4rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notebook-list-select:hover,
+.page-list-select:hover {
+  background: var(--painter-hover);
+}
+
+.notebook-cover {
+  flex: 0 0 auto;
+  width: 0.85rem;
+  height: 1.1rem;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 0;
+}
+
+.notebook-list-name,
+.page-list-name {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--painter-text);
+}
+
+.notebook-list-name {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.notebook-list-name,
+.page-list-name strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.page-list-name small {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--painter-text-soft);
+}
+
+.notebook-list-meta {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  color: var(--painter-text-soft);
+}
+
+/* —— 纸张 —— */
+
+/* 四张缩略纸：与画布上 drawPaper 同源的图案，这里走纯 CSS 不必开 canvas */
+.paper-preview,
+.page-sheet {
+  background-color: #fff;
+  border: 1px solid #d8dce2;
+  border-radius: 0; /* 直角，与画板风格一致 */
+}
+
+.paper-blank {
+  background-image: none;
+}
+
+.paper-ruled {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 7px,
+    #d7e3f2 8px
+  );
+}
+
+.paper-grid {
+  background-image: linear-gradient(#e1e5eb 1px, transparent 1px),
+    linear-gradient(90deg, #e1e5eb 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+.paper-dotted {
+  background-image: radial-gradient(#c8ced8 0.7px, transparent 0.7px);
+  background-size: 7px 7px;
+}
+
+.paper-template-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+
+.paper-template-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.35rem 0.15rem;
+  background: transparent;
+  border: 1px solid var(--painter-border);
+  border-radius: 0;
+  color: var(--painter-text);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.paper-template-btn:hover {
+  border-color: var(--painter-green);
+}
+
+.paper-template-btn.selected {
+  border-color: var(--painter-green);
+  background: var(--painter-hover);
+  font-weight: 600;
+}
+
+.paper-preview {
+  width: 2.3rem;
+  height: 1.75rem;
+}
+
+.page-sheet {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.95rem;
+  font-size: 0.7rem;
+  color: #5f5e5a;
+}
+
+.page-template-select {
+  flex: 0 0 auto;
+  max-width: 4.2rem;
+  padding: 0.1rem 0.15rem;
+  background: var(--painter-bar);
+  border: 1px solid var(--painter-border);
+  border-radius: 0;
+  color: var(--painter-text);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+/* —— 名称编辑 —— */
+
+.notebook-editor {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem;
+}
+
+.notebook-editor-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.25rem 0.35rem;
+  background: var(--painter-bar);
+  border: 1px solid var(--painter-green);
+  border-radius: 0;
+  color: var(--painter-text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.notebook-editor-input:focus {
+  outline: none;
+}
+
+/* —— 暗色适配 —— */
+
+[data-theme="dark"] .notebook-panel {
+  background: #262626;
+  border-color: var(--painter-border-dark);
+}
+
+[data-theme="dark"] .notebook-panel-header,
+[data-theme="dark"] .notebook-panel-footer,
+[data-theme="dark"] .notebook-section + .notebook-section {
+  border-color: var(--painter-border-dark);
+}
+
+[data-theme="dark"] .notebook-list-select,
+[data-theme="dark"] .page-list-select,
+[data-theme="dark"] .paper-template-btn,
+[data-theme="dark"] .notebook-editor-input,
+[data-theme="dark"] .page-template-select {
+  color: #e6e6e6;
+}
+
+[data-theme="dark"] .notebook-list-select:hover,
+[data-theme="dark"] .page-list-select:hover,
+[data-theme="dark"] .notebook-list-item.active,
+[data-theme="dark"] .page-list-item.active,
+[data-theme="dark"] .paper-template-btn.selected,
+[data-theme="dark"] .notebook-section-title button:hover {
+  background: var(--painter-hover-dark);
+}
+
+[data-theme="dark"] .notebook-editor-input,
+[data-theme="dark"] .page-template-select {
+  background: #1f1f1f;
+  border-color: var(--painter-border-dark);
+}
+
+[data-theme="dark"] .notebook-editor-input {
+  border-color: var(--painter-green);
+}
