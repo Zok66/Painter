@@ -5,7 +5,6 @@ import {
   DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE,
 } from "@excalidraw/common";
 import { ColorPicker } from "./ColorPicker";
-import { EyeDropperController } from "./_shims";
 import type { ColorPickerType } from "./colorPickerUtils";
 
 interface NativeColorPickerProps {
@@ -75,7 +74,6 @@ export const NativeColorPicker: React.FC<NativeColorPickerProps> = ({
         appState={appState as any}
         updateData={updateData}
       />
-      <EyeDropperController />
     </div>
   );
 };

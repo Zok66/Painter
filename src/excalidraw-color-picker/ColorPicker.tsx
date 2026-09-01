@@ -21,7 +21,6 @@ import { useAtom } from "./_shims";
 import { t } from "./_shims";
 import { useExcalidrawContainer, useStylesPanelMode } from "./_shims";
 import { ButtonSeparator } from "./_shims";
-import { activeEyeDropperAtom } from "./_shims";
 import { PropertiesPopover } from "./_shims";
 import { slashIcon, strokeIcon } from "./_shims";
 import {
@@ -100,8 +99,6 @@ const ColorPickerPopupContent = ({
   const isMobileMode = stylesPanelMode === "mobile";
   const [, setActiveColorPickerSection] = useAtom(activeColorPickerSectionAtom);
 
-  const [eyeDropperState, setEyeDropperState] = useAtom(activeEyeDropperAtom);
-
   const colorInputJSX = (
     <div>
       <PickerHeading>{t("colorPicker.hexCode")}</PickerHeading>
@@ -111,7 +108,6 @@ const ColorPickerPopupContent = ({
         onChange={(color) => {
           onChange(color);
         }}
-        colorPickerType={type}
         placeholder={t("colorPicker.color")}
       />
     </div>
@@ -159,13 +155,9 @@ const ColorPickerPopupContent = ({
         }
         event.preventDefault();
       }}
-      onPointerDownOutside={(event) => {
-        if (eyeDropperState) {
-          // prevent from closing if we click outside the popover
-          // while eyedropping (e.g. click when clicking the sidebar;
-          // the eye-dropper-backdrop is prevented downstream)
-          event.preventDefault();
-        }
+      onPointerDownOutside={() => {
+        // no-op: removed native eye dropper, so no need to keep the popup
+        // open while the system color picker is active.
       }}
       onClose={() => {
         // only clear if we're still the active popup (avoid racing with switch)
@@ -207,34 +199,9 @@ const ColorPickerPopupContent = ({
               restoreCaretPosition(savedSelection);
             }
           }}
-          onEyeDropperToggle={(force) => {
-            setEyeDropperState((state) => {
-              if (force) {
-                state = state || {
-                  keepOpenOnAlt: true,
-                  onSelect: onChange,
-                  colorPickerType: type,
-                };
-                state.keepOpenOnAlt = true;
-                return state;
-              }
-
-              return force === false || state
-                ? null
-                : {
-                    keepOpenOnAlt: false,
-                    onSelect: onChange,
-                    colorPickerType: type,
-                  };
-            });
-          }}
-          onEscape={(_event) => {
-            if (eyeDropperState) {
-              setEyeDropperState(null);
-            } else {
-              // close explicitly on Escape
-              updateData({ openPopup: null });
-            }
+          onEscape={() => {
+            // close explicitly on Escape
+            updateData({ openPopup: null });
           }}
           type={type}
           elements={elements}

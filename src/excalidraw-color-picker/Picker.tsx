@@ -1,11 +1,8 @@
 import React, { useEffect, useImperativeHandle, useState } from "react";
 
-import { EVENT } from "@excalidraw/common";
-
 import {
   DEFAULT_ELEMENT_BACKGROUND_COLOR_INDEX,
   DEFAULT_ELEMENT_STROKE_COLOR_INDEX,
-  KEYS,
 } from "@excalidraw/common";
 
 import type { ExcalidrawElement, Theme } from "@excalidraw/element/types";
@@ -40,7 +37,6 @@ interface PickerProps {
   updateData: (formData?: any) => void;
   children?: React.ReactNode;
   showTitle?: boolean;
-  onEyeDropperToggle: (force?: boolean) => void;
   onEscape: (event: React.KeyboardEvent | KeyboardEvent) => void;
   showHotKey?: boolean;
   excludedColors?: readonly string[];
@@ -58,7 +54,6 @@ export const Picker = React.forwardRef(
       updateData,
       children,
       showTitle,
-      onEyeDropperToggle,
       onEscape,
       showHotKey = true,
       excludedColors,
@@ -125,17 +120,7 @@ export const Picker = React.forwardRef(
       if (colorObj?.shade != null) {
         setActiveShade(colorObj.shade);
       }
-
-      const keyup = (event: KeyboardEvent) => {
-        if (event.key === KEYS.ALT) {
-          onEyeDropperToggle(false);
-        }
-      };
-      document.addEventListener(EVENT.KEYUP, keyup, { capture: true });
-      return () => {
-        document.removeEventListener(EVENT.KEYUP, keyup, { capture: true });
-      };
-    }, [colorObj, onEyeDropperToggle]);
+    }, [colorObj]);
     const pickerRef = React.useRef<HTMLDivElement>(null);
 
     useImperativeHandle(ref, () => pickerRef.current!);
@@ -155,7 +140,6 @@ export const Picker = React.forwardRef(
               palette,
               color,
               onChange,
-              onEyeDropperToggle,
               customColors,
               setActiveColorPickerSection,
               updateData,

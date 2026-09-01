@@ -127,7 +127,6 @@ interface ColorPickerKeyNavHandlerProps {
   ) => void;
   updateData: (formData?: any) => void;
   activeShade: number;
-  onEyeDropperToggle: (force?: boolean) => void;
   onEscape: (event: React.KeyboardEvent | KeyboardEvent) => void;
   excludedColors?: readonly string[];
 }
@@ -144,7 +143,6 @@ export const colorPickerKeyNavHandler = ({
   customColors,
   setActiveColorPickerSection,
   activeShade,
-  onEyeDropperToggle,
   onEscape,
   excludedColors,
 }: ColorPickerKeyNavHandlerProps): boolean => {
@@ -154,17 +152,6 @@ export const colorPickerKeyNavHandler = ({
 
   if (event.key === KEYS.ESCAPE) {
     onEscape(event);
-    return true;
-  }
-
-  // checkt using `key` to ignore combos with Alt modifier
-  if (event.key === KEYS.ALT) {
-    onEyeDropperToggle(true);
-    return true;
-  }
-
-  if (event.key === KEYS.I) {
-    onEyeDropperToggle();
     return true;
   }
 
