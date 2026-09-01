@@ -125,7 +125,27 @@
   text-align: center;
 }
 
-/* —— 智能画笔胶囊按钮：对齐 Draw to shape 风格 —— */
+/* —— 我的笔记本：图标 + 文字胶囊 —— */
+.btn-notebook {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.notebook-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+  flex: 0 0 auto;
+}
+
+.notebook-text {
+  line-height: 1;
+}
 .btn-smartshape {
   display: inline-flex;
   align-items: center;

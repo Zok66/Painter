@@ -93,10 +93,14 @@ export default function Toolbar(props: ToolbarProps) {
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.8"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              strokeLinecap="round"
             >
-              <path d="M6 3h10l3 3v15H6z" strokeLinejoin="round" />
-              <path d="M9.5 9.5h5M9.5 13.5h5" strokeLinecap="round" />
+              {/* 书脊在左、页面在右的笔记本：外框 + 书脊 + 折角 + 两条文本线 */}
+              <path d="M5 3.5h11l3.5 3.5v13.5H5z" />
+              <path d="M8 3.5v17" /> {/* 书脊 */}
+              <path d="M9.5 9h6M9.5 12.5h6" /> {/* 文本线 */}
             </svg>
           </span>
           <span className="notebook-text">笔记本</span>
