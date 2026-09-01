@@ -25,6 +25,7 @@ dist-ssr
 
 # 测试脚本的截图输出
 scripts/test_out/
+_verify/
 
 # WorkBuddy local data
 .workbuddy/

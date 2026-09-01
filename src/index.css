@@ -56,9 +56,19 @@ button {
 
   --color-primary: #6965db;
   --color-primary-darker: #5b57d1;
+  --color-primary-darkest: #4a47b1;
   --color-primary-light: #e3e2fe;
+  --color-primary-light-darker: #d7d5ff;
   --color-primary-hover: #5753d0;
   --color-brand-hover: #5753d0;
+  --color-brand-active: #4440bf;
+
+  --color-surface-high: #f1f0ff;
+  --color-surface-mid: #f6f6f9;
+  --color-surface-low: #ececf4;
+  --color-surface-lowest: #ffffff;
+  --color-on-primary-container: #030064;
+  --color-surface-primary-container: #e0dfff;
 
   --color-on-surface: #1b1b1f;
   --island-bg-color: #ffffff;
@@ -86,9 +96,19 @@ button {
 .app[data-theme="dark"] {
   --color-primary: #a8a5ff;
   --color-primary-darker: #c7c5ff;
+  --color-primary-darkest: #beb9ff;
   --color-primary-light: #31303d;
+  --color-primary-light-darker: #43415e;
   --color-primary-hover: #8f8bff;
   --color-brand-hover: #8f8bff;
+  --color-brand-active: #d0ccff;
+
+  --color-surface-high: #2e2d39;
+  --color-surface-mid: hsl(240 6% 10%);
+  --color-surface-low: hsl(240, 8%, 15%);
+  --color-surface-lowest: hsl(0, 0%, 7%);
+  --color-on-primary-container: #e0dfff;
+  --color-surface-primary-container: #403e6a;
 
   --color-on-surface: #e3e3e8;
   --island-bg-color: #232329;
