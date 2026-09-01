@@ -246,8 +246,9 @@
     0 0 3px 0 rgba(0, 0, 0, 0.08),
     0 7px 14px 0 rgba(0, 0, 0, 0.18);
   border-radius: 4px;
-  padding: 0.5rem;
-  width: 194px;
+  padding: 0.25rem 0;
+  max-width: 13rem;
+  min-width: 11.5rem;
 }
 
 .color-picker-content {
@@ -258,7 +259,7 @@
 }
 
 .color-picker-content--default {
-  padding: 0;
+  padding: 0.5rem;
   display: grid;
   grid-template-columns: repeat(5, 1.875rem);
   grid-gap: 0.25rem;
@@ -266,23 +267,36 @@
 }
 
 .picker-heading {
-  font-size: 0.6875rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
   color: var(--color-gray-60);
   margin: 0;
+  text-align: left;
 }
 
 .shade-list {
   display: grid;
   grid-template-columns: repeat(5, 1.875rem);
   grid-gap: 0.25rem;
+  padding: 0.5rem;
 }
 
 /* 色阶为空时的占位文案（原生行为：区块仍在，只换内容） */
-.shade-empty {
-  padding: 0 0.5rem 0.25rem;
-  font-size: 0.6875rem;
-  line-height: 1.4;
+.shade-empty-grid {
+  position: relative;
+  padding: 0.5rem;
+}
+
+.shade-empty-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.75rem;
   color: var(--color-gray-60);
+  padding: 0.5rem;
 }
 
 /* 底部提示，取值对齐原生 .color-picker__tip */
@@ -291,6 +305,19 @@
   font-size: 0.6875rem;
   line-height: 1.4;
   color: var(--color-gray-60);
+  text-align: left;
+}
+
+/* 色块右下角的快捷键标签（q/b / ⇧1…⇧5） */
+.color-picker__button__hotkey-label {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 10px;
+  font-family: monospace;
+  font-weight: 500;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .grid-current {
@@ -320,12 +347,14 @@
 }
 
 .color-picker__input-label {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 8px;
   align-items: center;
-  gap: 4px;
   border: 1px solid var(--default-border-color);
-  border-radius: var(--border-radius-lg);
-  padding: 0 0.5rem;
+  border-radius: 8px;
+  padding: 0 12px;
+  margin: 0 0.5rem;
   box-sizing: border-box;
 }
 
@@ -337,21 +366,45 @@
   padding: 0 0.25rem;
   color: var(--color-gray-60);
   font-family: monospace;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.color-picker__input-divider {
+  width: 1px;
+  height: 1.25rem;
+  background-color: var(--default-border-color);
+}
+
+.color-picker__eye-dropper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-gray-60);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.color-picker__eye-dropper:hover {
+  color: var(--color-on-surface);
 }
 
 .color-picker-input {
   box-sizing: border-box;
   width: 100%;
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-family: inherit;
   background: transparent;
   color: var(--color-on-surface);
   border: 0;
   outline: none;
-  height: 1.75rem;
-  padding: 0.25rem 0;
+  height: var(--default-button-size, 2rem);
+  padding: 0.5rem 0;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
 }
 

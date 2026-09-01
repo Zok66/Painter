@@ -347,6 +347,43 @@ const QWERTY_KEYS = [
   "z", "x", "c", "v", "b",
 ] as const;
 
+/** 原生色块右下角的小快捷键标签 */
+function HotkeyLabel({ color, keyLabel }: { color: string; keyLabel: string }) {
+  return (
+    <div
+      className="color-picker__button__hotkey-label"
+      style={{ color: isColorDark(color) ? "#fff" : "#000" }}
+    >
+      {keyLabel}
+    </div>
+  );
+}
+
+/** 取色器图标（原生是 eyedropper，这里用同形 SVG） */
+function EyeDropperIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m2 22 4-4" />
+      <path d="M16.5 14.5c.74-2.17 2.3-4.42 4.5-6a2.08 2.08 0 0 0-2.24-3.48c-1.7 1.1-3.9 2.7-6 4.5" />
+      <path d="M14 11.5c.66-1.95 2.05-3.96 4-5.5a2.08 2.08 0 0 0-2.24-3.48c-1.5.97-3.43 2.38-5.31 3.97" />
+      <path d="M10 10.5c.66-1.95 2.05-3.96 4-5.5a2.08 2.08 0 0 0-2.24-3.48c-1.5.97-3.43 2.38-5.31 3.97" />
+      <path d="m15 15 1.5 1.5" />
+      <path d="M12 18 9.5 15.5" />
+      <path d="m9 21 1.5-1.5" />
+    </svg>
+  );
+}
+
 function findShadeKey(
   palette: Record<string, PaletteValue>,
   color: string,
@@ -618,9 +655,13 @@ function ColorPickerGrid({
   const gridSwatches = (
     colors: readonly string[],
     titlePrefix: string,
+    hotkeyOffset: number,
   ): ReactNode =>
-    colors.map((c) => {
+    colors.map((c, i) => {
       const isTransparentColor = c === "transparent";
+      const hotkeyIndex = hotkeyOffset + i;
+      const hotkey =
+        hotkeyIndex < QWERTY_KEYS.length ? QWERTY_KEYS[hotkeyIndex] : null;
       return (
         <button
           key={c}
@@ -631,13 +672,14 @@ function ColorPickerGrid({
             !isColorDark(c) ? "has-outline" : ""
           }`}
           style={{ "--swatch-color": c } as CSSProperties}
-          title={isTransparentColor ? "透明" : c}
+          title={`${isTransparentColor ? "透明" : c}${hotkey ? ` — ${hotkey}` : ""}`}
           aria-label={`${titlePrefix} ${
             isTransparentColor ? "透明" : c
-          }`}
+          }${hotkey ? ` — ${hotkey}` : ""}`}
           onClick={() => onChange(c)}
         >
           <div className="color-picker__button-outline" />
+          {hotkey && <HotkeyLabel color={c} keyLabel={hotkey} />}
         </button>
       );
     });
@@ -646,15 +688,28 @@ function ColorPickerGrid({
     ? (palette[activeShadeKey] as readonly string[])
     : null;
 
+  // 原生 eyedropper（Chrome/Edge 支持）
+  const handleEyeDropper = async () => {
+    try {
+      const eyeDropper = new (window as any).EyeDropper();
+      const result = await eyeDropper.open();
+      if (result?.sRGBHex) onChange(result.sRGBHex);
+    } catch {
+      // 用户取消或不支持，静默忽略
+    }
+  };
+  const eyeDropperSupported = !!(window as any).EyeDropper;
+
   return (
     <div className="color-picker-content">
       <div className="picker-heading">颜色</div>
       <div className="color-picker-content color-picker-content--default">
-        {gridSwatches(topRow, "颜色")}
-        {rows.map((row) => gridSwatches(row, "颜色"))}
+        {gridSwatches(topRow, "颜色", 0)}
+        {rows.map((row, rowIndex) =>
+          gridSwatches(row, "颜色", topRow.length + rowIndex * row.length),
+        )}
       </div>
 
-      {/* 与原生的差异：色阶区块始终存在，无变体时显示占位文案而不是整块消失 */}
       <div className="picker-heading">色调明暗</div>
       {shades ? (
         <div className="shade-list">
@@ -666,16 +721,29 @@ function ColorPickerGrid({
                 c === color ? "active" : ""
               } ${!isColorDark(c) ? "has-outline" : ""}`}
               style={{ "--swatch-color": c } as CSSProperties}
-              title={`${SHADE_LABELS[i]} ${c}`}
-              aria-label={`${SHADE_LABELS[i]} ${c}`}
+              title={`${SHADE_LABELS[i]} ${c} — ⇧${i + 1}`}
+              aria-label={`${SHADE_LABELS[i]} ${c} — ⇧${i + 1}`}
               onClick={() => onChange(c)}
             >
               <div className="color-picker__button-outline" />
+              <HotkeyLabel color={c} keyLabel={`⇧${i + 1}`} />
             </button>
           ))}
         </div>
       ) : (
-        <div className="shade-empty">此颜色没有可用的明暗变化</div>
+        // 原生空态：保留一个占位 swatch，文字覆盖在上面
+        <div
+          className="color-picker-content--default shade-empty-grid"
+          tabIndex={-1}
+        >
+          <button
+            type="button"
+            tabIndex={-1}
+            className="color-picker__button color-picker__button--large color-picker__button--no-focus-visible"
+            disabled
+          />
+          <div className="shade-empty-text">此颜色没有可用的明暗变化</div>
+        </div>
       )}
 
       <div className="picker-heading">十六进制值</div>
@@ -694,6 +762,20 @@ function ColorPickerGrid({
           onChange={(e) => handleHex(e.target.value)}
           aria-label="十六进制颜色值"
         />
+        {eyeDropperSupported && (
+          <>
+            <div className="color-picker__input-divider" />
+            <button
+              type="button"
+              className="color-picker__eye-dropper"
+              title="取色器"
+              aria-label="取色器"
+              onClick={handleEyeDropper}
+            >
+              <EyeDropperIcon size={14} />
+            </button>
+          </>
+        )}
       </div>
 
       <div className="color-picker__tip">
