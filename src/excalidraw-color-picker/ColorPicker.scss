@@ -432,6 +432,8 @@ $color-gray-6: #868e96;
     display: flex;
     align-items: center;
     gap: 0;
+    // Keep the two suffix buttons from wrapping or expanding the grid column.
+    flex: none;
   }
 
   // 1:1 copy of the upstream `.excalidraw .excalidraw-eye-dropper-trigger`
@@ -460,17 +462,23 @@ $color-gray-6: #868e96;
       background: var(--color-primary-light);
     }
 
-    // Keep the hidden <input type="color"> from taking part in layout,
-    // but still clickable via the parent div.
+    // The hidden <input type="color"> must stay completely invisible,
+    // but its click() is triggered by the parent div. Use zero size so
+    // browsers never render the default color swatch.
     & > input[type="color"] {
       position: absolute;
-      inset: 0;
+      top: 0;
+      left: 0;
       opacity: 0;
-      width: 100%;
-      height: 100%;
+      width: 0;
+      height: 0;
       padding: 0;
       border: 0;
+      overflow: hidden;
       pointer-events: none;
+      appearance: none;
+      -webkit-appearance: none;
+      background: transparent;
     }
 
     & > svg {
