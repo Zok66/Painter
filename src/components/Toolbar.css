@@ -65,7 +65,7 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--painter-text);
-  background: #fff;
+  background: var(--painter-bar);
   border: 1px solid var(--painter-border);
   border-radius: 8px;
   cursor: pointer;
@@ -79,7 +79,7 @@
 }
 
 .btn:active:not(:disabled) {
-  background: #ddf6e4;
+  background: var(--painter-green-light);
 }
 
 .btn:disabled {
@@ -105,17 +105,18 @@
 }
 
 .btn-accent:hover:not(:disabled) {
-  background: #d9f5e2;
+  background: var(--painter-hover);
+  border-color: var(--painter-green);
 }
 
 .btn-danger {
   color: #c0392b;
-  border-color: #f0c8c3;
+  border-color: rgba(192, 57, 43, 0.25);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #fdeeeb;
-  border-color: #e57369;
+  background: rgba(192, 57, 43, 0.12);
+  border-color: rgba(192, 57, 43, 0.6);
 }
 
 .btn-icon {
@@ -160,7 +161,7 @@
 }
 
 .btn-smartshape:hover:not(:disabled) {
-  background: #d9f5e2;
+  background: var(--painter-hover);
 }
 
 .btn-smartshape.active {
@@ -195,7 +196,7 @@
   font-size: 11px;
   font-weight: 500;
   color: var(--painter-text-soft);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--painter-bar);
   border: 1px solid var(--painter-border);
   border-radius: 5px;
 }
@@ -215,7 +216,7 @@
 }
 
 .btn-fillbucket:hover:not(:disabled) {
-  background: #d9f5e2;
+  background: var(--painter-hover);
 }
 
 .btn-fillbucket.active {
@@ -261,7 +262,7 @@
   gap: 4px;
   padding: 0 8px;
   height: 34px;
-  background: #fff;
+  background: var(--painter-bar);
   border: 1px solid var(--painter-border);
   border-radius: 8px;
   transition: border-color 0.12s ease;
