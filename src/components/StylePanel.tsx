@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   applyDarkModeFilter,
@@ -330,6 +337,16 @@ const SHADE_LABELS: Record<number, string> = {
   4: "最深",
 };
 
+/**
+ * QWERTY 快捷键：网格按 5 列排，前 15 个色块对应键盘中排三行字母。
+ * 与原生一致——字母既是位置也是快捷选色键。
+ */
+const QWERTY_KEYS = [
+  "q", "w", "e", "r", "t",
+  "a", "s", "d", "f", "g",
+  "z", "x", "c", "v", "b",
+] as const;
+
 function findShadeKey(
   palette: Record<string, PaletteValue>,
   color: string,
@@ -372,6 +389,11 @@ interface ColorPickerSectionProps {
   onChange: (color: string) => void;
 }
 
+/** 浮层与触发按钮的间距，与原生 popper 的 offset 观感一致 */
+const POPUP_GAP = 8;
+/** 浮层距视口边缘的最小留白 */
+const POPUP_EDGE = 8;
+
 function ColorPickerSection({
   label,
   color,
@@ -384,6 +406,50 @@ function ColorPickerSection({
   const [expanded, setExpanded] = useState(false);
   const sectionRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  // null = 还没测量完（此时浮层隐藏在视口外，避免闪一下再跳位）
+  const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  /**
+   * 锚定到触发按钮并按可用空间翻转。
+   * 用 fixed 而不是 absolute：.style-panel 有 overflow-y: auto，
+   * absolute 浮层会被面板高度裁掉。
+   */
+  useLayoutEffect(() => {
+    if (!expanded) {
+      setPopupPos(null);
+      return;
+    }
+    const trigger = triggerRef.current;
+    const popup = popupRef.current;
+    if (!trigger || !popup) return;
+
+    const t = trigger.getBoundingClientRect();
+    const h = popup.offsetHeight;
+    const w = popup.offsetWidth;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    // 垂直：优先放下方，下方不够就翻到上方，上下都不够则贴视口底部
+    let top = t.bottom + POPUP_GAP;
+    if (top + h > vh - POPUP_EDGE) {
+      const above = t.top - POPUP_GAP - h;
+      top =
+        above >= POPUP_EDGE ? above : Math.max(POPUP_EDGE, vh - h - POPUP_EDGE);
+    }
+
+    // 水平：浮层左边缘对齐触发按钮左边缘（与原生 .dropdown-menu 一致），
+    // 只有右下溢出视口时才整体左移并夹进视口，避免被左边裁掉。
+    let left = t.left;
+    if (left + w > vw - POPUP_EDGE) {
+      left = Math.max(POPUP_EDGE, vw - w - POPUP_EDGE);
+    }
+    if (left < POPUP_EDGE) left = POPUP_EDGE;
+
+    setPopupPos({ top, left });
+  }, [expanded, color]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -461,7 +527,16 @@ function ColorPickerSection({
       </div>
 
       {expanded && (
-        <div className="color-picker-popup">
+        <div
+          ref={popupRef}
+          className="color-picker-popup"
+          style={
+            popupPos
+              ? { top: popupPos.top, left: popupPos.left }
+              : // 还没测量时先藏到视口外，避免先闪一下左上角再跳位
+                { top: -9999, left: -9999, visibility: "hidden" }
+          }
+        >
           <ColorPickerGrid
             palette={palette}
             color={color}
@@ -493,6 +568,44 @@ function ColorPickerGrid({
   );
   const { topRow, rows } = buildPaletteRows(palette);
   const activeShadeKey = findShadeKey(palette, color);
+
+  // palette 是模块级常量（DEFAULT_ELEMENT_*_PALETTE），引用稳定，故 flatColors
+  // 用 useMemo([palette]) 只算一次，QWERTY 监听不会因每次渲染产生新数组而反复解绑重绑。
+  const flatColors = useMemo(() => [...topRow, ...rows.flat()], [palette]);
+
+  // 用 ref 拿最新的 onChange，避免父组件重渲染导致监听反复解绑重绑
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  // QWERTY 快捷键：本组件只在浮层展开时挂载，所以监听天然只在展开期生效
+  useEffect(() => {
+    // 网格渲染顺序 = topRow 在前、各色系依次在后，快捷键按这个顺序映射前 15 个。
+    const handleKey = (e: KeyboardEvent) => {
+      // 正在十六进制输入框里打字时不能触发，否则输入会被误当成选色
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const index = QWERTY_KEYS.indexOf(
+        e.key.toLowerCase() as (typeof QWERTY_KEYS)[number],
+      );
+      if (index === -1) return;
+      const picked = flatColors[index];
+      if (picked === undefined) return;
+
+      e.preventDefault();
+      onChangeRef.current(picked);
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [flatColors]);
 
   const handleHex = (value: string) => {
     setHexInput(value);
@@ -529,6 +642,10 @@ function ColorPickerGrid({
       );
     });
 
+  const shades = activeShadeKey
+    ? (palette[activeShadeKey] as readonly string[])
+    : null;
+
   return (
     <div className="color-picker-content">
       <div className="picker-heading">颜色</div>
@@ -537,44 +654,31 @@ function ColorPickerGrid({
         {rows.map((row) => gridSwatches(row, "颜色"))}
       </div>
 
-      {activeShadeKey && (
-        <>
-          <div className="picker-heading">色阶</div>
-          <div className="shade-list">
-            {(palette[activeShadeKey] as readonly string[]).map((c, i) => (
-              <button
-                key={`${activeShadeKey}-${i}`}
-                type="button"
-                className={`color-picker__button color-picker__button--large ${
-                  c === color ? "active" : ""
-                } ${!isColorDark(c) ? "has-outline" : ""}`}
-                style={{ "--swatch-color": c } as CSSProperties}
-                title={`${activeShadeKey} ${SHADE_LABELS[i]} ${c}`}
-                aria-label={`${activeShadeKey} ${SHADE_LABELS[i]} ${c}`}
-                onClick={() => onChange(c)}
-              >
-                <div className="color-picker__button-outline" />
-              </button>
-            ))}
-          </div>
-        </>
+      {/* 与原生的差异：色阶区块始终存在，无变体时显示占位文案而不是整块消失 */}
+      <div className="picker-heading">色调明暗</div>
+      {shades ? (
+        <div className="shade-list">
+          {shades.map((c, i) => (
+            <button
+              key={`${activeShadeKey}-${i}`}
+              type="button"
+              className={`color-picker__button color-picker__button--large ${
+                c === color ? "active" : ""
+              } ${!isColorDark(c) ? "has-outline" : ""}`}
+              style={{ "--swatch-color": c } as CSSProperties}
+              title={`${SHADE_LABELS[i]} ${c}`}
+              aria-label={`${SHADE_LABELS[i]} ${c}`}
+              onClick={() => onChange(c)}
+            >
+              <div className="color-picker__button-outline" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="shade-empty">此颜色没有可用的明暗变化</div>
       )}
 
-      <div className="grid-current">
-        <span>当前：</span>
-        {color === "transparent" ? (
-          <span className="current-swatch is-transparent" />
-        ) : (
-          <span
-            className="current-swatch"
-            style={{ backgroundColor: color }}
-          />
-        )}
-        <span className="current-hex">
-          {color === "transparent" ? "透明" : color}
-        </span>
-      </div>
-
+      <div className="picker-heading">十六进制值</div>
       <div className="color-picker__input-label">
         <span className="color-picker__input-hash">#</span>
         <input
@@ -590,6 +694,10 @@ function ColorPickerGrid({
           onChange={(e) => handleHex(e.target.value)}
           aria-label="十六进制颜色值"
         />
+      </div>
+
+      <div className="color-picker__tip">
+        按住并拖拽任意颜色到上方常用色，即可固定它
       </div>
     </div>
   );

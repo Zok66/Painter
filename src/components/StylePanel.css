@@ -233,10 +233,11 @@
 }
 
 /* —— 颜色弹出面板 —— */
+/* 用 fixed + JS 算位置：.style-panel 有 overflow-y: auto，absolute 会被裁切。
+   定位逻辑见 StylePanel.tsx ColorPickerSection 的 useLayoutEffect（锚定触发
+   按钮、下方不够翻上方、水平夹进视口）。 */
 .color-picker-popup {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  left: 0;
+  position: fixed;
   z-index: 100;
   background: var(--popup-bg-color);
   border: 0 solid rgba(255, 255, 255, 0.25);
@@ -274,6 +275,22 @@
   display: grid;
   grid-template-columns: repeat(5, 1.875rem);
   grid-gap: 0.25rem;
+}
+
+/* 色阶为空时的占位文案（原生行为：区块仍在，只换内容） */
+.shade-empty {
+  padding: 0 0.5rem 0.25rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--color-gray-60);
+}
+
+/* 底部提示，取值对齐原生 .color-picker__tip */
+.color-picker__tip {
+  padding: 0 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--color-gray-60);
 }
 
 .grid-current {
