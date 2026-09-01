@@ -1,4 +1,9 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
+import {
+  COLOR_PALETTE,
+  DEFAULT_ELEMENT_STROKE_COLOR_PALETTE,
+  DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE,
+} from "@excalidraw/common";
 import { ColorPicker } from "./ColorPicker";
 import { EyeDropperController } from "./_shims";
 import type { ColorPickerType } from "./colorPickerUtils";
@@ -24,6 +29,17 @@ interface PickerAppState {
   colorTopPicks: any;
 }
 
+const getPalette = (type: ColorPickerType) => {
+  switch (type) {
+    case "elementStroke":
+      return DEFAULT_ELEMENT_STROKE_COLOR_PALETTE;
+    case "elementBackground":
+      return DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE;
+    default:
+      return COLOR_PALETTE;
+  }
+};
+
 export const NativeColorPicker: React.FC<NativeColorPickerProps> = ({
   type,
   color,
@@ -31,6 +47,7 @@ export const NativeColorPicker: React.FC<NativeColorPickerProps> = ({
   theme = "dark",
   label,
 }) => {
+  const palette = useMemo(() => getPalette(type), [type]);
   const [appState, setAppState] = useState<PickerAppState>({
     openPopup: null,
     theme,
@@ -52,7 +69,8 @@ export const NativeColorPicker: React.FC<NativeColorPickerProps> = ({
         type={type}
         color={color}
         onChange={onChange}
-        label={label ?? (type === "elementStroke" ? "Stroke" : "Background")}
+        label={label ?? (type === "elementStroke" ? "描边" : "背景")}
+        palette={palette}
         elements={[]}
         appState={appState as any}
         updateData={updateData}

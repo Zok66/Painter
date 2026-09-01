@@ -24,28 +24,46 @@ export type AppState = any;
 export type UIAppState = any;
 
 const I18N: Record<string, string> = {
-  "colorPicker.hexCode": "Hex code",
-  "colorPicker.color": "Color",
-  "labels.showStroke": "Show stroke",
-  "labels.showBackground": "Show background",
-  "labels.stroke": "Stroke",
-  "labels.background": "Background",
-  "labels.colorPicker": "Color picker",
-  "colorPicker.mostUsedCustomColors": "Most used custom colors",
-  "colorPicker.colors": "Colors",
-  "colorPicker.shades": "Shades",
-  "colorPicker.topPicksTip": "Drag a color onto the top picks to pin it",
-  "colorPicker.noShades": "This color doesn't have any shades",
-  "colorPicker.invalidHexLength": "Invalid hex code length",
-  "colorPicker.invalidColor": "Invalid color",
-  "labels.eyeDropper": "Eye dropper",
-  "colorPicker.resetTopPicks": "Reset to defaults",
+  "colorPicker.hexCode": "十六进制值",
+  "colorPicker.color": "颜色",
+  "labels.showStroke": "显示描边",
+  "labels.showBackground": "显示背景",
+  "labels.stroke": "描边",
+  "labels.background": "背景",
+  "labels.colorPicker": "颜色选择器",
+  "colorPicker.mostUsedCustomColors": "最常用的自定义颜色",
+  "colorPicker.colors": "颜色",
+  "colorPicker.shades": "色调明暗",
+  "colorPicker.topPicksTip": "将任意颜色拖到上方常用色即可固定它",
+  "colorPicker.noShades": "此颜色没有可用的明暗变化",
+  "colorPicker.invalidHexLength": "十六进制代码长度无效",
+  "colorPicker.invalidColor": "颜色无效",
+  "labels.eyeDropper": "取色器",
+  "colorPicker.resetTopPicks": "重置为默认值",
+};
+
+const COLOR_NAMES: Record<string, string> = {
+  transparent: "透明",
+  black: "黑色",
+  white: "白色",
+  gray: "灰色",
+  red: "红色",
+  pink: "粉色",
+  grape: "紫红色",
+  violet: "紫罗兰色",
+  blue: "蓝色",
+  cyan: "青色",
+  teal: "蓝绿色",
+  green: "绿色",
+  yellow: "黄色",
+  orange: "橙色",
+  bronze: "古铜色",
 };
 
 export const t = (key: string, _params?: any, fallback?: string): string => {
   if (key.startsWith("colors.")) {
     const name = key.slice("colors.".length).replace(/\d+/g, "");
-    return name.charAt(0).toUpperCase() + name.slice(1);
+    return COLOR_NAMES[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
   }
   if (key in I18N) {
     return I18N[key];
