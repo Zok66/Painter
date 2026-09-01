@@ -182,8 +182,8 @@ function patchNativeColorPicker(): Plugin {
         const jsxAt = code.lastIndexOf("ul(", prodAt);
         if (jsxAt >= 0) {
           const seg = code.slice(jsxAt, prodAt);
-          // 确认中间只是合法属性，避免误命中其它 ref:b
-          if (seg.startsWith("ul(") && seg.includes(prodPat)) {
+          // 确认 jsxAt 到 prodAt 之间就是同一个 ul("div",{ 调用，避免误命中其它 ref:b
+          if (seg.startsWith("ul(") && seg.length < 80) {
             const before = code.slice(0, jsxAt);
             const after = code.slice(jsxAt);
             const insert =

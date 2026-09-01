@@ -101,3 +101,19 @@
 .app.smart-shape-active .excalidraw__canvas {
   cursor: crosshair !important;
 }
+
+/* —— 原生属性面板取色器：让系统取色按钮与铅笔按钮在同一行 ——
+   原生 ColorInput 的 .color-picker__input-label 是 grid，只有三列
+   （# / input / 原铅笔）。注入系统取色按钮后，第二个按钮会换行。
+   改成 flex 单行布局，让 input 自适应剩余宽度。 */
+.excalidraw .color-picker-content.properties-content .color-picker__input-label {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.excalidraw .color-picker-content.properties-content .color-picker__input-label .color-picker-input {
+  flex: 1;
+  min-width: 0;
+}
