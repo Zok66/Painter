@@ -71,12 +71,16 @@ button {
   --color-gray-80: #3d3d3d;
   --color-border-outline-variant: #c5c5d0;
 
+  /* 与 Excalidraw 原生 theme.scss 保持一致，subtle outline + soft shadow */
+  --popup-bg-color: var(--island-bg-color);
   --shadow-island:
-    0px 0.5px 2px rgba(0, 0, 0, 0.105), 0px 1.5px 4px rgba(0, 0, 0, 0.075),
-    0px 4px 12px rgba(0, 0, 0, 0.045);
+    0px 0px 1px 0px rgba(0, 0, 0, 0.17),
+    0px 0px 3px 0px rgba(0, 0, 0, 0.08),
+    0px 7px 14px 0px rgba(0, 0, 0, 0.05);
   --shadow-island-stronger:
-    0px 1px 3px rgba(0, 0, 0, 0.12), 0px 3px 8px rgba(0, 0, 0, 0.1),
-    0px 8px 24px rgba(0, 0, 0, 0.06);
+    0px 0px 1px 0px rgba(0, 0, 0, 0.17),
+    0px 0px 3px 0px rgba(0, 0, 0, 0.08),
+    0px 7px 14px 0px rgba(0, 0, 0, 0.18);
 }
 
 .app[data-theme="dark"] {
@@ -97,10 +101,14 @@ button {
   --color-gray-80: #b8b8c0;
   --color-border-outline-variant: #4a4a57;
 
+  /* 原生 theme.scss 在暗色下未覆盖 shadow-island，沿用同一组柔和投影 */
+  --popup-bg-color: var(--island-bg-color);
   --shadow-island:
-    0px 0.5px 2px rgba(0, 0, 0, 0.4), 0px 1.5px 4px rgba(0, 0, 0, 0.3),
-    0px 4px 12px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.15);
+    0px 0px 1px 0px rgba(0, 0, 0, 0.17),
+    0px 0px 3px 0px rgba(0, 0, 0, 0.08),
+    0px 7px 14px 0px rgba(0, 0, 0, 0.05);
   --shadow-island-stronger:
-    0px 1px 3px rgba(0, 0, 0, 0.5), 0px 3px 8px rgba(0, 0, 0, 0.4),
-    0px 8px 24px rgba(0, 0, 0, 0.3);
+    0px 0px 1px 0px rgba(0, 0, 0, 0.17),
+    0px 0px 3px 0px rgba(0, 0, 0, 0.08),
+    0px 7px 14px 0px rgba(0, 0, 0, 0.18);
 }

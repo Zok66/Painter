@@ -72,9 +72,15 @@ export const t = (key: string, _params?: any, fallback?: string): string => {
 };
 
 /* --------------------- container / panel mode ----------------------- */
-export const useExcalidrawContainer = () => ({
-  container: null as HTMLElement | null,
-});
+export const useExcalidrawContainer = () => {
+  // Portaled popups (PropertiesPopover) must live inside .app so they inherit
+  // the Excalidraw design tokens (--island-bg-color, --shadow-island, etc.).
+  const container =
+    typeof document !== "undefined"
+      ? (document.querySelector(".app") as HTMLDivElement | null)
+      : null;
+  return { container };
+};
 
 export const useStylesPanelMode = () =>
   "full" as "full" | "compact" | "mobile";
