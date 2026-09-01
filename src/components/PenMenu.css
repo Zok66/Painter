@@ -136,40 +136,57 @@
 
 /* —— 暗色适配 —— */
 [data-theme="dark"] .btn-pen {
-  background: #2a2a2a;
-  border-color: #3f3f3f;
-  color: #d6d6d6;
+  background: var(--painter-bg-dark);
+  border-color: var(--painter-border);
+  color: var(--painter-text);
 }
 
 [data-theme="dark"] .btn-pen:hover:not(:disabled) {
-  background: #333;
+  background: var(--painter-hover);
   border-color: var(--painter-green);
 }
 
+[data-theme="dark"] .btn-pen.active,
+[data-theme="dark"] .btn-pen.active:hover:not(:disabled) {
+  background: var(--painter-green);
+  border-color: var(--painter-green);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(52, 217, 122, 0.25);
+}
+
 [data-theme="dark"] .pen-dropdown {
-  background: #262626;
-  border-color: var(--painter-border-dark);
+  background: var(--painter-bar);
+  border-color: var(--painter-border);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 [data-theme="dark"] .pen-item:hover {
-  background: var(--painter-hover-dark);
-  border-color: var(--painter-border-dark);
+  background: var(--painter-hover);
+  border-color: var(--painter-border);
 }
 
-[data-theme="dark"] .pen-item.selected {
-  background: #14361f;
-  border-color: var(--painter-green-dark);
+[data-theme="dark"] .pen-item.selected,
+[data-theme="dark"] .pen-item.selected:hover {
+  background: var(--painter-green);
+  border-color: var(--painter-green);
+  color: #fff;
+}
+
+[data-theme="dark"] .pen-item.selected .pen-name,
+[data-theme="dark"] .pen-item.selected .pen-desc,
+[data-theme="dark"] .pen-item.selected .pen-check,
+[data-theme="dark"] .pen-item.selected .pen-swatch {
+  color: #fff;
 }
 
 [data-theme="dark"] .pen-name {
-  color: #e6e6e6;
+  color: var(--painter-text);
 }
 
 [data-theme="dark"] .pen-desc {
-  color: #9aa5a0;
+  color: var(--painter-text-soft);
 }
 
 [data-theme="dark"] .pen-swatch {
-  color: #e6e6e6;
+  color: var(--painter-text);
 }
