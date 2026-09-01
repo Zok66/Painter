@@ -8,7 +8,7 @@ import { t } from "./_shims";
 
 import { activeColorPickerSectionAtom } from "./colorPickerUtils";
 
-/** 调色板图标：替换原生铅笔 EyeDropper 按钮，点击后唤起系统颜色选择器。 */
+/** 调色板按钮图标：唤起系统颜色选择器。 */
 const colorPaletteIcon = (
   <svg
     width="20"
@@ -25,6 +25,26 @@ const colorPaletteIcon = (
     <circle cx="12" cy="12" r="10" />
     <path d="M12 2a10 10 0 0 1 0 20" />
     <circle cx="12" cy="12" r="4" />
+  </svg>
+);
+
+/** 取色笔按钮图标：调用浏览器原生 EyeDropper API。 */
+const eyeDropperIcon = (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M4 16l11.7 -11.7a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4l-11.7 11.7h-4v-4z" />
+    <path d="M11 7l6 6" />
   </svg>
 );
 
@@ -71,7 +91,28 @@ export const ColorInput = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const pickerTriggerRef = useRef<HTMLDivElement>(null);
+  const eyeDropperTriggerRef = useRef<HTMLDivElement>(null);
   const nativeColorInputRef = useRef<HTMLInputElement>(null);
+
+  const [picking, setPicking] = useState(false);
+
+  const openEyeDropper = useCallback(async () => {
+    const w = window as any;
+    if (typeof w === "undefined" || !w.EyeDropper) {
+      return;
+    }
+    setPicking(true);
+    try {
+      const result = await new w.EyeDropper().open();
+      if (result?.sRGBHex) {
+        changeColor(result.sRGBHex);
+      }
+    } catch {
+      // user cancelled or API not supported
+    } finally {
+      setPicking(false);
+    }
+  }, [changeColor]);
 
   const currentHex = useMemo(() => {
     const v = (color || "").replace(/^#/, "");
@@ -127,29 +168,50 @@ export const ColorInput = ({
           }}
         />
         <div
-          ref={pickerTriggerRef}
-          className="excalidraw-eye-dropper-trigger"
-          onClick={() => nativeColorInputRef.current?.click()}
-          title={t("labels.colorPicker")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.125rem",
+            padding: "0 0.125rem",
+          }}
         >
-          <input
-            ref={nativeColorInputRef}
-            type="color"
-            value={currentHex}
-            onChange={(event) => changeColor(event.target.value)}
-            tabIndex={-1}
-            style={{
-              position: "absolute",
-              opacity: 0,
-              width: 0,
-              height: 0,
-              padding: 0,
-              border: 0,
-              pointerEvents: "none",
-            }}
-            aria-hidden="true"
-          />
-          {colorPaletteIcon}
+          <div
+            ref={pickerTriggerRef}
+            className="excalidraw-eye-dropper-trigger"
+            onClick={() => nativeColorInputRef.current?.click()}
+            title={t("labels.colorPicker")}
+            style={{ width: 28, height: 28 }}
+          >
+            <input
+              ref={nativeColorInputRef}
+              type="color"
+              value={currentHex}
+              onChange={(event) => changeColor(event.target.value)}
+              tabIndex={-1}
+              style={{
+                position: "absolute",
+                opacity: 0,
+                width: 0,
+                height: 0,
+                padding: 0,
+                border: 0,
+                pointerEvents: "none",
+              }}
+              aria-hidden="true"
+            />
+            {colorPaletteIcon}
+          </div>
+          <div
+            ref={eyeDropperTriggerRef}
+            className={clsx("excalidraw-eye-dropper-trigger", {
+              selected: picking,
+            })}
+            onClick={openEyeDropper}
+            title={`${t("labels.eyeDropper")} — I`}
+            style={{ width: 28, height: 28 }}
+          >
+            {eyeDropperIcon}
+          </div>
         </div>
       </div>
       {errorMessage && (
