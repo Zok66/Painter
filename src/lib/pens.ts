@@ -238,11 +238,15 @@ export function buildFreedrawElement(
     if (p.x > maxX) maxX = p.x;
     if (p.y > maxY) maxY = p.y;
   }
-  // variable 模式实际笔宽 = strokeWidth * 4.25，constant = strokeWidth * 1.4
-  const pad =
-    pen.variability === "constant" ? pen.strokeWidth * 0.7 : pen.strokeWidth * 2.13;
-  const x = minX - pad;
-  const y = minY - pad;
+  // 关键：freedraw 元素必须按 Excalidraw 原生结构构造 —— element.x/y = 轨迹
+  // 最小点、points 相对 (minX, minY) 且首点落在 (0,0)。Excalidraw 的离屏
+  // 合成（generateElementCanvas → drawElementFromCanvas）会假设这一结构，
+  // 渲染时用 x1 = 局部点最小 + element.x 反推场景坐标。若此处额外外扩 pad，
+  // 首个点会被多平移 pad，导致整条笔迹相对光标「右下偏移」（荧光笔走 line
+  // 通道无此问题，所以只有它看起来居中）。选择框由 ShapeCache 生成的真实
+  // 笔迹轮廓决定，与这里是否外扩无关，故无需 pad。
+  const x = minX;
+  const y = minY;
 
   const localPoints = points.map(
     (p) => [p.x - x, p.y - y] as [number, number],
@@ -253,8 +257,8 @@ export function buildFreedrawElement(
     type: "freedraw",
     x,
     y,
-    width: maxX - minX + pad * 2,
-    height: maxY - minY + pad * 2,
+    width: maxX - minX,
+    height: maxY - minY,
     angle: 0,
     strokeColor: strokeColor ?? appState.currentItemStrokeColor,
     backgroundColor: "transparent",
