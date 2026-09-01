@@ -167,20 +167,12 @@ export const ColorInput = ({
             backgroundColor: "var(--default-border-color)",
           }}
         />
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.125rem",
-            padding: "0 0.125rem",
-          }}
-        >
+        <div className="color-picker__input-label-triggers">
           <div
             ref={pickerTriggerRef}
             className="excalidraw-eye-dropper-trigger"
             onClick={() => nativeColorInputRef.current?.click()}
             title={t("labels.colorPicker")}
-            style={{ width: 28, height: 28 }}
           >
             <input
               ref={nativeColorInputRef}
@@ -188,15 +180,6 @@ export const ColorInput = ({
               value={currentHex}
               onChange={(event) => changeColor(event.target.value)}
               tabIndex={-1}
-              style={{
-                position: "absolute",
-                opacity: 0,
-                width: 0,
-                height: 0,
-                padding: 0,
-                border: 0,
-                pointerEvents: "none",
-              }}
               aria-hidden="true"
             />
             {colorPaletteIcon}
@@ -208,7 +191,6 @@ export const ColorInput = ({
             })}
             onClick={openEyeDropper}
             title={`${t("labels.eyeDropper")} — I`}
-            style={{ width: 28, height: 28 }}
           >
             {eyeDropperIcon}
           </div>

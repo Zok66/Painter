@@ -27,6 +27,10 @@ $color-gray-6: #868e96;
 }
 
 .painter-color-picker {
+  // Match Excalidraw's .excalidraw font stack — the copied ColorPicker
+  // expects the Assistant/system-ui family to look identical to upstream.
+  font-family: var(--ui-font);
+
   --color-outline: var(--color-gray-20);
   &.theme--dark {
     --color-outline: var(--color-gray-80);
@@ -418,6 +422,61 @@ $color-gray-6: #868e96;
       &:focus-within {
         box-shadow: 0 0 0 1px var(--color-danger, #e03131);
       }
+    }
+  }
+
+  // Trigger wrapper for the two input-suffix buttons (system color picker +
+  // eye-dropper). It replaces the single native eye-dropper slot while keeping
+  // the same overall dimensions.
+  .color-picker__input-label-triggers {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  // 1:1 copy of the upstream `.excalidraw .excalidraw-eye-dropper-trigger`
+  // rules, scoped under `.painter-color-picker` so it works outside `.excalidraw`.
+  .excalidraw-eye-dropper-trigger {
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+    padding: 4px;
+    margin-right: -4px;
+    margin-left: -2px;
+    border-radius: 0.5rem;
+    color: var(--icon-fill-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: content-box;
+    position: relative;
+
+    &:hover {
+      background: var(--button-hover-bg);
+    }
+
+    &.selected {
+      color: var(--color-primary);
+      background: var(--color-primary-light);
+    }
+
+    // Keep the hidden <input type="color"> from taking part in layout,
+    // but still clickable via the parent div.
+    & > input[type="color"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      border: 0;
+      pointer-events: none;
+    }
+
+    & > svg {
+      width: 1rem;
+      height: 1rem;
+      flex-shrink: 0;
     }
   }
 
