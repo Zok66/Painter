@@ -180,6 +180,105 @@
 回退内置英文包（`chunk-7QNTKOP3.js`，其中 `bucketfill: "Bucket fill"` #L336）。
 **不要以为是功能没装上**。自定义组件里引用工具名时，建议自己维护一份中文名映射表。
 
+### 3.7 原生色选择器（ColorPicker）展开机制
+
+点属性面板"描边/背景"任一色块会弹出浮层：QWERTY 15 色网格 + 色调明暗 + 十六进制输入
++ 底部提示"拖拽颜色到常用色可固定"。这套是独立组件，不是 hover 提示。
+
+**入口组件**：`<ColorPicker>`，类型声明在
+`node_modules/@excalidraw/excalidraw/dist/types/excalidraw/components/ColorPicker/ColorPicker.d.ts`。
+实现被打包进 `dist/dev/chunk-6WU4HLK7.js`（主 bundle，grep 不到可读源码，只能从 .d.ts
++ CSS 反推结构）。
+
+关键 props：
+
+```ts
+interface ColorPickerProps {
+  type: ColorPickerType;        // "stroke" | "background"，决定弹层从哪侧展开
+  color: string | null;         // null = 多选且颜色不一致，不高亮任何色块
+  onChange: (color: string) => void;
+  label: string;
+  elements: readonly ExcalidrawElement[];
+  appState: UIAppState;
+  palette?: ColorPaletteCustom | null;   // 完整色板（QWERTY 那 15 个）
+  topPicks?: ColorTuple;                 // 顶部固定常用色
+  updateData: (formData?: any) => void;  // 反向把改动写回 appState
+  excludedColors?: readonly string[];    // 隐藏某些色但保留其快捷键位
+  customizableTopPicks?: keyof AppState["colorTopPicks"]; // 启用拖拽固定的存储槽
+}
+```
+
+**DOM / CSS 类层级**（`dist/dev/index.css` #L387-490）：
+
+```
+.color-picker-container                    外层 grid：颜色行 / 分隔线 / 当前色
+├── .color-picker__top-picks               顶部一行常用色
+│   └── .color-picker__button (×5)         单色块
+├── .button-separator                      中间 1px 灰线
+└── .color-picker__button.active           末尾"当前色"块 ← 点它展开
+    ↓ 点击
+.color-picker-keyboard-horizontal          弹层容器（绝对定位浮在按钮旁）
+└── .color-picker-content                  内容
+    ├── .color-picker-content--default     5 列网格：QWERTY 15 色
+    ├── .picker-heading                    "色调明暗"小标题
+    ├── .shade-list                        明暗变体（无变体时显示占位文案）
+    ├── .color-input                       十六进制输入框
+    └── .color-picker__tip                 "drag any color onto your top picks to pin it"
+```
+
+**QWERTY 网格**：15 个常用色按键盘中排字母排 3 行 × 5 列：
+
+```
+q w e r t
+a s d f g
+z x c v b
+```
+
+每个字母既是位置也是**快捷键**（按 `q` 选第一个…）。色板常量从 `@excalidraw/common`
+导出，本项目已在用：
+
+```ts
+import {
+  DEFAULT_ELEMENT_STROKE_COLOR_PALETTE,      // 15 色 QWERTY
+  DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE,
+  DEFAULT_ELEMENT_STROKE_PICKS,              // topPicks 5 色
+  DEFAULT_ELEMENT_BACKGROUND_PICKS,
+} from "@excalidraw/common";
+```
+
+**展开/收起**：不是 hover，是点击 + 状态提升。`ColorPicker` 自己维护 active 态控制
+浮层渲染；选色后 `onChange` → `updateData({ [type]: color })` 写回父组件 `appState`；
+外部点击 / Esc 由浮层容器统一收起。
+
+**拖拽固定到常用色**：`customizableTopPicks` 启用后，弹层内色块 `draggable`，
+`onDragStart` 把色值写进 `dataTransfer`；topPicks 的 `.color-picker__button` 监听
+`onDrop` / `onDragOver`，色值落到 `appState.colorTopPicks[<key>]`，下次渲染出现在常用色行。
+油漆桶的最近填充色就存在 `appState.colorTopPicks.bucketFill`（见 §3.5）。
+
+**关键样式 token**：
+
+| 元素 | 值 |
+|---|---|
+| 弹层宽度 | `194px`（固定） |
+| 弹层 padding / 圆角 | `0.5rem` / `4px` |
+| 弹层底色 | `var(--popup-bg-color)`（= `--island-bg-color`） |
+| 弹层投影 | `0 0 1px rgba(0,0,0,.17), 0 0 3px rgba(0,0,0,.08), 0 7px 14px rgba(0,0,0,.18)` |
+| 色块尺寸 | `1.375rem` × `1.375rem`，`--radius: 4px` |
+| 激活态 | `box-shadow: 0 0 0 1px var(--color-primary-darkest)` |
+| 悬停态 | `box-shadow: inset 0 0 0 1px var(--color-brand-hover)` |
+| 焦点环 | `::after` 外扩 4px + `3px var(--color-brand-hover)` 描边 |
+
+**自研面板要复用，别复制整个 ColorPicker**（要追 15 个 prop、QWERTY 键映射、拖拽持久化）。
+推荐取巧路线：
+
+1. `DEFAULT_ELEMENT_STROKE_PICKS` 当常用色行
+2. `DEFAULT_ELEMENT_STROKE_COLOR_PALETTE` 当 QWERTY 网格
+3. 浮层用 `.color-picker-keyboard-horizontal` + `position: absolute` 贴到触发按钮旁
+4. 样式直接沿用 `index.css` 的 `.color-picker-content` / `.color-picker__button`
+5. 展开态用本地 `useState`，`onChange` 直接调画板现有的 `style.strokeColor` setter
+
+这样自研面板的"描边"行能拿到和原生一致的展开观感，只多一个组件 + 一份样式。
+
 ---
 
 ## 4. 常用 API 速查（本项目实际在用）
