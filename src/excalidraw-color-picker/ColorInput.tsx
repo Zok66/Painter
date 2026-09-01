@@ -187,6 +187,15 @@ export const ColorInput = ({
               onChange={(event) => changeColor(event.target.value)}
               tabIndex={-1}
               aria-hidden="true"
+              style={{
+                position: "absolute",
+                opacity: 0,
+                width: 0,
+                height: 0,
+                padding: 0,
+                border: 0,
+                pointerEvents: "none",
+              }}
             />
             {colorPaletteIcon}
           </div>
