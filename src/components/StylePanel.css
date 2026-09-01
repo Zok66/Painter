@@ -23,12 +23,13 @@
   top: 3.75rem;
   left: 0.75rem;
   width: fit-content;
-  min-width: 13.5rem;
+  min-width: 11.5rem;
+  max-width: 12.5rem; /* 对齐原生 .App-menu__left 的 12.5rem 宽度 */
   max-height: calc(100% - 4.5rem);
   overflow-y: auto;
   z-index: 20;
   box-sizing: border-box;
-  padding: 0.75rem;
+  padding: 0.5rem;
   background: var(--island-bg-color);
   border: 0;
   border-radius: var(--border-radius-lg);
@@ -358,14 +359,18 @@
 }
 
 /* —— 画笔选择栏：位于原生面板顶部的第一行 —— */
+.pen-list .buttonList {
+  column-gap: 0.25rem;
+}
+
 .pen-list .buttonList label {
   width: auto;
-  height: 2rem;
-  padding: 0 0.45rem;
+  height: 1.75rem;
+  padding: 0 0.15rem;
 }
 
 .pen-list .buttonList label svg {
-  width: 2.25rem;
+  width: 1.5rem;
   height: auto;
 }
 
