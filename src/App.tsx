@@ -73,6 +73,7 @@ import {
 import NotebookPanel from "./components/NotebookPanel";
 import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
+import "./nativeColorPatch";
 
 // 注册场景内渲染钩子（必须在 Excalidraw 渲染前完成）
 installGrainElementRenderer();
