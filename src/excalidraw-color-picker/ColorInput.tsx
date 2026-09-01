@@ -166,17 +166,10 @@ export const ColorInput = ({
           }}
           placeholder={placeholder}
         />
-        <div
-          style={{
-            width: "1px",
-            height: "1.25rem",
-            backgroundColor: "var(--default-border-color)",
-          }}
-        />
         <div className="color-picker__input-label-triggers">
           <div
             ref={pickerTriggerRef}
-            className="excalidraw-eye-dropper-trigger"
+            className="excalidraw-eye-dropper-trigger painter-color-trigger"
             onClick={() => nativeColorInputRef.current?.click()}
             title={t("labels.colorPicker")}
           >
@@ -201,9 +194,12 @@ export const ColorInput = ({
           </div>
           <div
             ref={eyeDropperTriggerRef}
-            className={clsx("excalidraw-eye-dropper-trigger", {
-              selected: picking,
-            })}
+            className={clsx(
+              "excalidraw-eye-dropper-trigger painter-color-trigger",
+              {
+                selected: picking,
+              },
+            )}
             onClick={openEyeDropper}
             title={`${t("labels.eyeDropper")} — I`}
           >
