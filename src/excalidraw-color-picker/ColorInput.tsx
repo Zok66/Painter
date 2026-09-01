@@ -53,11 +53,17 @@ export const ColorInput = ({
   onChange,
   label,
   placeholder,
+  colorPickerType: _colorPickerType,
 }: {
   color: string;
   onChange: (color: string) => void;
   label: string;
   placeholder?: string;
+  /**
+   * 原生 ColorInput 会传入 colorPickerType，但自研实现不需要它。
+   * 保留该 prop 是为了让 vite transform 直接替换原生调用时不必再删字段。
+   */
+  colorPickerType?: string;
 }) => {
   const [innerValue, setInnerValue] = useState(color);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

@@ -145,51 +145,45 @@ function patchPaperTexture(): Plugin {
 }
 
 /**
- * 原生 ColorInput 取色器增强。
+ * 原生 ColorInput 取色器替换为自研组件。
  *
- * 原生 Excalidraw ColorInput 的十六进制输入框右侧只有一个铅笔 EyeDropper 按钮。
- * 这里在 EyeDropper 按钮之前注入一个系统取色触发按钮（window.__painterNativeSysColor，
- * 定义在 src/nativeColorPatch.tsx），点击唤起系统颜色选择器，与铅笔取色笔并列。
+ * 原生 Excalidraw ColorPicker 弹窗里「十六进制值」行使用原生 ColorInput，
+ * 右侧只有一支铅笔 EyeDropper，点击会进入 Excalidraw 自己的取色状态（画布变暗）。
+ * 这里通过 vite transform 把原生弹窗中的 ColorInput 调用替换为
+ * window.__painterColorInput（即自研 ColorInput，定义在
+ * src/excalidraw-color-picker/ColorInput.tsx，并在 src/nativeColorPatch.tsx
+ * 挂到全局），从而在该行直接使用系统取色器 + 浏览器原生 EyeDropper API。
  *
- * dev（格式化源码）与 prod（压缩）分别用不同的锚点定位 EyeDropper 按钮的 jsx 调用，
- * 在其前面插入一个兄弟 jsx 元素。匹配不上时原样返回，最坏情况只是没有该系统取色按钮。
+ * dev（格式化源码）直接按 jsxN(ColorInput, { 定位调用点；
+ * prod（压缩）先通过组件定义 var Ww=({color:e,...})=> 提取组件名，
+ * 再替换 jsxFn(Ww,{ 调用。
  */
 function patchNativeColorPicker(): Plugin {
   return {
     name: "painter-patch-native-color-picker",
     transform(code, id) {
       if (!id.includes("@excalidraw/excalidraw/dist/")) return;
-      if (code.includes("__painterNativeSysColor")) return;
+      if (code.includes("__painterColorInput")) return;
 
-      // dev：格式化源码，EyeDropper 按钮 ref 为 eyeDropperTriggerRef
-      const devAt = code.indexOf("ref: eyeDropperTriggerRef,");
-      if (devAt >= 0) {
-        const jsxAt = code.lastIndexOf("jsx13(", devAt);
-        if (jsxAt >= 0) {
-          const before = code.slice(0, jsxAt);
-          const after = code.slice(jsxAt);
-          const insert =
-            "/* @__PURE__ */ window.__painterNativeSysColor && jsx13(window.__painterNativeSysColor, { color, onChange }),\n                ";
-          return before + insert + after;
-        }
+      // dev：格式化源码，调用处形如 jsx20(ColorInput, { ... })
+      const devRe = /(jsx\d+)\(\s*ColorInput,\s*\{/;
+      if (devRe.test(code)) {
+        return code.replace(devRe, "$1(window.__painterColorInput, {");
       }
 
-      // prod：压缩，EyeDropper ref 为短名（如 b），className 用 clsx 短名（如 Hw）
-      // 定位 "ref:b,className:Hw(\"excalidraw-eye-dropper-trigger\"" 前的 ul( 调用
-      const prodPat = 'ref:b,className:Hw("excalidraw-eye-dropper-trigger"';
-      const prodAt = code.indexOf(prodPat);
-      if (prodAt >= 0) {
-        const jsxAt = code.lastIndexOf("ul(", prodAt);
-        if (jsxAt >= 0) {
-          const seg = code.slice(jsxAt, prodAt);
-          // 确认 jsxAt 到 prodAt 之间就是同一个 ul("div",{ 调用，避免误命中其它 ref:b
-          if (seg.startsWith("ul(") && seg.length < 80) {
-            const before = code.slice(0, jsxAt);
-            const after = code.slice(jsxAt);
-            const insert =
-              "window.__painterNativeSysColor&&ul(window.__painterNativeSysColor,{color:void 0,onChange:t}),";
-            return before + insert + after;
-          }
+      // prod：压缩后组件名被缩短，先通过定义签名提取组件名
+      const prodDefRe =
+        /var (\w+)=\(\{color:e,onChange:t,label:n,colorPickerType:o,placeholder:r\}\)=>/;
+      const defMatch = code.match(prodDefRe);
+      if (defMatch) {
+        const compName = defMatch[1];
+        const callRe = new RegExp(`(jsx\\d+|\\w+)\\(${compName},\\{`);
+        const callMatch = code.match(callRe);
+        if (callMatch) {
+          return code.replace(
+            callRe,
+            `${callMatch[1]}(window.__painterColorInput,{`,
+          );
         }
       }
 
