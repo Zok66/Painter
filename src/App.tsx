@@ -1352,6 +1352,13 @@ export default function App() {
             </MainMenu.Group>
             <MainMenu.Separator />
 
+            {/* 画布行为首选项：9 项默认 toggle 全部由库提供（不动 children 走默认）
+                —— Select on (Wrap/Overlap 单选) / 工具锁 / 吸附至对象 / 网格 /
+                禅模式 / 查看模式 / 画布与形状属性 / 箭头绑定 / 吸附到中点。
+                结构对齐 Excalidraw.com 截图：Preferences 作为一级项展开，主题与语言
+                仍是主菜单的独立项（不进 Preferences 子菜单）。 */}
+            <MainMenu.DefaultItems.Preferences />
+
             {/* 主题切换：3 态（sun/moon/monitor），通过 onThemeChange 同步到 themeMode */}
             <MainMenu.DefaultItems.ToggleTheme allowSystemTheme theme={themeMode} />
 
