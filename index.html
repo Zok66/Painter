@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Painter · 画板工具</title>
+    <script>
+      // Excalidraw 默认从 CDN（esm.sh）拉取字体，网络不稳定会导致
+      // 画布/导出 SVG 字体 fallback 成系统字体。这里指向本地 public/fonts，
+      // 字体已 self-host，画布显示与 SVG 导出（内嵌 base64 子集）都走本地。
+      window.EXCALIDRAW_ASSET_PATH = new URL(
+        "./fonts/",
+        window.location.href,
+      ).toString();
+    </script>
   </head>
   <body>
     <div id="root"></div>
