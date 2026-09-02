@@ -9,6 +9,8 @@ import {
   restoreElements,
   THEME,
   CaptureUpdateAction,
+  MainMenu,
+  languages,
 } from "@excalidraw/excalidraw";
 import type {
   ExcalidrawImperativeAPI,
@@ -21,6 +23,7 @@ import type {
 import type {
   ExcalidrawElement,
   NonDeletedExcalidrawElement,
+  Theme,
 } from "@excalidraw/excalidraw/element/types";
 import type { GlobalPoint } from "@excalidraw/math";
 import { computeBucketFillPolygon } from "@excalidraw/element";
@@ -194,7 +197,31 @@ function stamp(prefix: string, ext: string) {
 
 export default function App() {
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
-  const [isDark, setIsDark] = useState(false);
+  // 主题：三态（light/dark/system）。Excalidraw 的 Excalidraw 组件 theme prop 只接
+  // "light"|"dark"，"system" 是宿主层标记，需要自己用 matchMedia 解析为 realTheme 再喂回去。
+  type ThemeMode = Theme | "system";
+  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+  const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+  // 监听系统主题变化（仅 system 模式下生效）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => setSystemPrefersDark(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  // 派生真实主题：system 模式按系统偏好解析，其它模式直接用
+  const realTheme: Theme =
+    themeMode === "system"
+      ? (systemPrefersDark ? THEME.DARK : THEME.LIGHT)
+      : themeMode;
+  const isDark = realTheme === THEME.DARK;
+  // 语言：库内置 languages 数组（>=85% 完成度的约 42 种，按 label 字母排序）；
+  // 改 langCode 会触发 Excalidraw.updateLanguage() 自动加载对应 locales/<code>.json
+  const [langCode, setLangCode] = useState<string>("zh-CN");
   const [saving, setSaving] = useState(false);
   const [initialData, setInitialData] = useState<any>(null);
   const [ready, setReady] = useState(false);
@@ -509,10 +536,10 @@ export default function App() {
 
   // 主题切换后纹理配色要跟着换，并重绘一次
   useEffect(() => {
-    setPaperDark(isDark);
+    setPaperDark(realTheme === THEME.DARK);
     requestExcalidrawRedraw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark]);
+  }, [realTheme]);
 
   // 新建 = 在当前笔记本里新增一页，保留旧页。
   // 与面板「新页面」完全同步，只是入口在工具栏上。
@@ -638,8 +665,11 @@ export default function App() {
     toast("已清空画布（Ctrl+Z 可恢复）");
   }, [excalidrawAPI, toast]);
 
-  // 切换主题
-  const handleToggleTheme = useCallback(() => setIsDark((v) => !v), []);
+  // Toolbar 右上角 2 态快捷按钮：在 light/dark 之间翻转，system 模式则退出到 light
+  const handleToggleTheme = useCallback(
+    () => setThemeMode((m) => (m === THEME.DARK ? THEME.LIGHT : THEME.DARK)),
+    [],
+  );
 
   // 从 Excalidraw 当前 appState 同步风格面板初始值（支持 localStorage 恢复）
   useEffect(() => {
@@ -1218,7 +1248,7 @@ export default function App() {
       className={`app${smartShapeActive ? " smart-shape-active" : ""}${
         activePen ? " pen-active" : ""
       }${fillActive ? " fill-bucket-active" : ""}`}
-      data-theme={isDark ? "dark" : "light"}
+      data-theme={realTheme}
       style={{ "--pen-cursor": penCursor(activePen) } as React.CSSProperties}
     >
       <Toolbar {...actions} saving={saving} />
@@ -1280,21 +1310,73 @@ export default function App() {
           onPointerDown={handlePointerDown}
           onPointerUpdate={handlePointerUpdate}
           onPointerUp={handlePointerUpCombined}
-          theme={isDark ? THEME.DARK : THEME.LIGHT}
+          theme={realTheme}
+          // onThemeChange 是 3 态主题切换的唯一通路：MainMenu.DefaultItems.ToggleTheme
+          // 内部会强制走这个回调（不传就 console.warn，参考
+          // node_modules/@excalidraw/excalidraw/dist/dev/index.js:29969-29975）。
+          // 收到 value 后回写到 themeMode，由 realTheme 派生给 Excalidraw.theme。
+          onThemeChange={(value) => setThemeMode(value as ThemeMode)}
+          langCode={langCode}
           UIOptions={{
             canvasActions: {
               loadScene: false,
               saveToActiveFile: false,
               export: { saveFileToDisk: true },
-              toggleTheme: false,
+              // 必须 true：让库注册 actionToggleTheme（含 Alt+Shift+D 快捷键），
+              // MainMenu.DefaultItems.ToggleTheme 内部会检查 isActionEnabled，
+              // 不注册直接返回 null 看不见。实际行为通过 onThemeChange 接管，
+              // 不会改 Excalidraw 自带的 appState.theme。
+              toggleTheme: true,
             },
             tools: {
               // 图片工具默认已启用,无需额外配置
               image: true,
             },
           }}
-          langCode="zh-CN"
-        />
+        >
+          {/* 自定义 MainMenu：传 children 后 Excalidraw 会自动隐藏 DefaultMainMenu
+              （fallback 版的 preferHost 机制，见 index.js:29679-29686）。
+              这里手动复刻 13 个 DefaultItems，再在 ChangeCanvasBackground 之前插入：
+              1. 主题切换（3 态）
+              2. 语言切换（库内置 languages 数组） */}
+          <MainMenu>
+            <MainMenu.DefaultItems.LoadScene />
+            <MainMenu.DefaultItems.SaveToActiveFile />
+            <MainMenu.DefaultItems.Export />
+            <MainMenu.DefaultItems.SearchMenu />
+            <MainMenu.DefaultItems.Help />
+            <MainMenu.DefaultItems.ClearCanvas />
+            <MainMenu.Separator />
+            <MainMenu.Group title="Excalidraw links">
+              <MainMenu.DefaultItems.Socials />
+            </MainMenu.Group>
+            <MainMenu.Separator />
+
+            {/* 主题切换：3 态（sun/moon/monitor），通过 onThemeChange 同步到 themeMode */}
+            <MainMenu.DefaultItems.ToggleTheme allowSystemTheme theme={themeMode} />
+
+            {/* 语言切换：遍历库内置 languages 数组（>=85% 完成度的 42 种） */}
+            <MainMenu.Sub>
+              <MainMenu.Sub.Trigger>
+                {languages.find((l) => l.code === langCode)?.label ?? langCode}
+              </MainMenu.Sub.Trigger>
+              <MainMenu.Sub.Content>
+                {languages.map((lang) => (
+                  <MainMenu.Item
+                    key={lang.code}
+                    selected={lang.code === langCode}
+                    onSelect={() => setLangCode(lang.code)}
+                  >
+                    {lang.label}
+                  </MainMenu.Item>
+                ))}
+              </MainMenu.Sub.Content>
+            </MainMenu.Sub>
+
+            {/* 画布背景 */}
+            <MainMenu.DefaultItems.ChangeCanvasBackground />
+          </MainMenu>
+        </Excalidraw>
       </main>
     </div>
   </div>
