@@ -2,10 +2,36 @@ import { getFontString, applyDarkModeFilter } from "@excalidraw/common";
 
 export type TextDirection = "horizontal" | "vertical";
 
+/** 垂直对齐：框高于内容时，文字在框内的落位。与原生 VERTICAL_ALIGN 取值一致。 */
+export type TextVerticalAlign = "top" | "middle" | "bottom";
+
 export interface TextFormatCustomData {
   textDirection?: TextDirection;
   /** 字体间距（字距），单位 px，0 表示原生默认 */
   letterSpacing?: number;
+  /** 用户拖拽上下手柄设定的框高度。缺省（undefined）表示高度由内容决定，即原生行为。 */
+  fixedHeight?: number;
+  /** 垂直对齐。缺省按 "top"，与原生 DEFAULT_VERTICAL_ALIGN 一致，保证旧文档不受影响。 */
+  verticalAlign?: TextVerticalAlign;
+}
+
+export const DEFAULT_VERTICAL_ALIGN: TextVerticalAlign = "top";
+
+/**
+ * 文字在框内的垂直偏移：框高于内容时按 verticalAlign 分配富余空间。
+ * 渲染（横排/竖排）与编辑态 textarea 共用，保证两处落位一致。
+ * contentHeight 为当前文本的实际排版高度；框不高于内容时恒为 0（内容永远完整可见）。
+ */
+export function painterTextPadTop(
+  boxHeight: number,
+  contentHeight: number,
+  verticalAlign: TextVerticalAlign | undefined,
+): number {
+  const free = boxHeight - contentHeight;
+  if (!(free > 0)) return 0;
+  if (verticalAlign === "bottom") return free;
+  if (verticalAlign === "middle") return free / 2;
+  return 0;
 }
 
 export interface TextMetrics {
@@ -95,6 +121,7 @@ export function painterTextRender(
     fontFamily: number;
     textAlign: "left" | "center" | "right";
     strokeColor: string;
+    height: number;
     customData?: TextFormatCustomData;
   },
   context: CanvasRenderingContext2D,
@@ -136,11 +163,20 @@ export function painterTextRender(
       /* ignore */
     }
 
+    // 框高于内容时，按 verticalAlign 把整块文字下移对应距离（竖排同样作用于垂直方向）
+    let maxChars = 1;
+    for (const line of lines) maxChars = Math.max(maxChars, line.length);
+    const padTop = painterTextPadTop(
+      element.height,
+      maxChars * stepY,
+      element.customData?.verticalAlign,
+    );
+
     for (let c = 0; c < lines.length; c++) {
       const col = lines[c];
       const x = anchorX - c * columnWidth;
       for (let i = 0; i < col.length; i++) {
-        const y = i * stepY + stepY / 2;
+        const y = i * stepY + stepY / 2 + padTop;
         context.fillText(col[i], x, y);
       }
     }

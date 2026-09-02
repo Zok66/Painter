@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
-import type { TextDirection } from "../lib/textFormat";
+import type { TextDirection, TextVerticalAlign } from "../lib/textFormat";
 
 export interface TextFormatValue {
   textDirection: TextDirection;
   lineHeight: number;
   letterSpacing: number;
+  verticalAlign: TextVerticalAlign;
 }
 
 interface TextFormatControlsProps {
@@ -13,6 +14,7 @@ interface TextFormatControlsProps {
     textDirection?: TextDirection;
     lineHeight?: number;
     letterSpacing?: number;
+    verticalAlign?: TextVerticalAlign;
   }) => void;
 }
 
@@ -54,6 +56,31 @@ const VerticalIcon = () => (
   <IconSvg width={20} height={20}>
     <path d="M7 4v12" />
     <path d="M13 4v12" />
+  </IconSvg>
+);
+
+/** 垂直对齐：框内三行短横线分别贴顶/居中/贴底 */
+const AlignTopIcon = () => (
+  <IconSvg width={20} height={20}>
+    <path d="M4 6h12" />
+    <path d="M4 9h12" />
+    <path d="M4 12h8" />
+  </IconSvg>
+);
+
+const AlignMiddleIcon = () => (
+  <IconSvg width={20} height={20}>
+    <path d="M4 9h12" />
+    <path d="M4 12h8" />
+    <path d="M4 6h8" />
+  </IconSvg>
+);
+
+const AlignBottomIcon = () => (
+  <IconSvg width={20} height={20}>
+    <path d="M4 14h12" />
+    <path d="M4 11h12" />
+    <path d="M4 8h8" />
   </IconSvg>
 );
 
@@ -134,6 +161,33 @@ export default function TextFormatControls({
               px
             </span>
           </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>垂直对齐</legend>
+        <div className="buttonList">
+          {(
+            [
+              { v: "top", icon: <AlignTopIcon />, title: "顶部对齐" },
+              { v: "middle", icon: <AlignMiddleIcon />, title: "垂直居中" },
+              { v: "bottom", icon: <AlignBottomIcon />, title: "底部对齐" },
+            ] as const
+          ).map(({ v, icon, title }) => (
+            <label
+              key={v}
+              className={value.verticalAlign === v ? "active" : ""}
+              title={title}
+            >
+              <input
+                type="radio"
+                name="text-vertical-align"
+                checked={value.verticalAlign === v}
+                onChange={() => onChange({ verticalAlign: v })}
+              />
+              {icon}
+            </label>
+          ))}
         </div>
       </fieldset>
     </div>

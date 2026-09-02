@@ -77,7 +77,12 @@ import NotebookPanel from "./components/NotebookPanel";
 import ExportSvgDialog from "./components/ExportSvgDialog";
 import type { Point } from "./lib/shapeRecognition";
 import { installPainterTextFormat, painterMeasureText } from "./lib/textFormat";
-import type { TextDirection, TextFormatCustomData } from "./lib/textFormat";
+import type {
+  TextDirection,
+  TextFormatCustomData,
+  TextVerticalAlign,
+} from "./lib/textFormat";
+import { DEFAULT_VERTICAL_ALIGN } from "./lib/textFormat";
 import TextFormatControls from "./components/TextFormatControls";
 import "./App.css";
 import "./nativeColorPatch";
@@ -257,6 +262,7 @@ export default function App() {
     textDirection: TextDirection;
     lineHeight: number;
     letterSpacing: number;
+    verticalAlign: TextVerticalAlign;
   } | null>(null);
   // 注入原生文字面板（.selected-shape-actions-container）的宿主节点
   const textFormatHostRef = useRef<HTMLDivElement | null>(null);
@@ -314,7 +320,7 @@ export default function App() {
       const inCorrectSpot =
         fontSizeFieldset && fontSizeFieldset.nextSibling === host;
       if (inCorrectSpot) return;
-      if (fontSizeFieldset) {
+      if (fontSizeFieldset?.parentNode) {
         if (host.parentNode) host.parentNode.removeChild(host);
         fontSizeFieldset.parentNode.insertBefore(
           host,
@@ -358,6 +364,7 @@ export default function App() {
           textDirection: TextDirection;
           lineHeight: number;
           letterSpacing: number;
+          verticalAlign: TextVerticalAlign;
         } | null = null;
         if (selIds.length === 1) {
           const el = elements.find((e) => e.id === selIds[0]);
@@ -370,6 +377,7 @@ export default function App() {
               lineHeight:
                 (el as unknown as { lineHeight?: number }).lineHeight ?? 1.25,
               letterSpacing: cd?.letterSpacing ?? 0,
+              verticalAlign: cd?.verticalAlign ?? DEFAULT_VERTICAL_ALIGN,
             };
           }
         }
@@ -398,6 +406,7 @@ export default function App() {
       textDirection?: TextDirection;
       lineHeight?: number;
       letterSpacing?: number;
+      verticalAlign?: TextVerticalAlign;
     }) => {
       const api = excalidrawAPIRef.current;
       const targetId = textFormat?.id;
@@ -420,6 +429,9 @@ export default function App() {
         ...(patch.letterSpacing !== undefined
           ? { letterSpacing: patch.letterSpacing }
           : {}),
+        ...(patch.verticalAlign !== undefined
+          ? { verticalAlign: patch.verticalAlign }
+          : {}),
       };
       const nextLineHeight = patch.lineHeight ?? prev.lineHeight ?? 1.25;
       const nextEl = {
@@ -437,8 +449,12 @@ export default function App() {
       });
       (nextEl as unknown as { width: number; height: number }).width =
         measured.width;
+      // 用户拖过上下手柄设定过框高度时保留它，但不小于内容高度，避免文字被裁切
+      const fixedH = nextCd.fixedHeight;
       (nextEl as unknown as { width: number; height: number }).height =
-        measured.height;
+        typeof fixedH === "number"
+          ? Math.max(fixedH, measured.height)
+          : measured.height;
       const updated = elements.map((e) => (e.id === targetId ? nextEl : e));
       api.updateScene({
         elements: updated,
@@ -1502,6 +1518,7 @@ export default function App() {
                 textDirection: textFormat.textDirection,
                 lineHeight: textFormat.lineHeight,
                 letterSpacing: textFormat.letterSpacing,
+                verticalAlign: textFormat.verticalAlign,
               }}
               onChange={applyTextFormat}
             />,
