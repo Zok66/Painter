@@ -74,6 +74,7 @@ import {
   type PaperTemplate,
 } from "./lib/notebook";
 import NotebookPanel from "./components/NotebookPanel";
+import ExportSvgDialog from "./components/ExportSvgDialog";
 import type { Point } from "./lib/shapeRecognition";
 import "./App.css";
 import "./nativeColorPatch";
@@ -223,6 +224,9 @@ export default function App() {
   // 改 langCode 会触发 Excalidraw.updateLanguage() 自动加载对应 locales/<code>.json
   const [langCode, setLangCode] = useState<string>("zh-CN");
   const [saving, setSaving] = useState(false);
+  // 导出 SVG 前的背景选择弹窗：开关 + 供预览的当前画布背景色
+  const [svgDialogOpen, setSvgDialogOpen] = useState(false);
+  const [svgBgColor, setSvgBgColor] = useState("#ffffff");
   const [initialData, setInitialData] = useState<any>(null);
   const [ready, setReady] = useState(false);
   // 笔记本：索引 + 每页场景。ref 与 state 同步，供防抖保存 / 切页时取当前页
@@ -627,28 +631,50 @@ export default function App() {
     }
   }, [excalidrawAPI, toast]);
 
-  // 导出 SVG
-  const handleExportSvg = useCallback(async () => {
+  // 导出 SVG：先弹窗选背景，确认后再真正导出
+  const handleExportSvg = useCallback(() => {
     if (!excalidrawAPI) return;
-    try {
-      const svg = await exportToSvg({
-        elements: excalidrawAPI.getSceneElements() as readonly ExcalidrawElement[],
-        appState: {
-          ...excalidrawAPI.getAppState(),
-          exportBackground: true,
-          exportEmbedScene: false,
-        },
-        files: excalidrawAPI.getFiles(),
-      });
-      const svgStr = new XMLSerializer().serializeToString(svg);
-      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
-      download(blob, stamp("painter", "svg"));
-      toast("已导出 SVG");
-    } catch (err) {
-      console.error(err);
-      toast("导出 SVG 失败", "error");
-    }
-  }, [excalidrawAPI, toast]);
+    // 打开前取一次底色：弹窗里的「带背景」预览要用真实画布颜色
+    setSvgBgColor(excalidrawAPI.getAppState().viewBackgroundColor || "#ffffff");
+    setSvgDialogOpen(true);
+  }, [excalidrawAPI]);
+
+  const handleCloseSvgDialog = useCallback(() => {
+    setSvgDialogOpen(false);
+    refocusCanvas();
+  }, []);
+
+  /**
+   * 真正执行 SVG 导出。
+   * exportBackground 是唯一开关：true 时 Excalidraw 在 SVG 根节点里
+   * 补一层 viewBackgroundColor 的矩形，false 时什么都不画，即透明底。
+   */
+  const doExportSvg = useCallback(
+    async (withBackground: boolean) => {
+      if (!excalidrawAPI) return;
+      setSvgDialogOpen(false);
+      try {
+        const svg = await exportToSvg({
+          elements: excalidrawAPI.getSceneElements() as readonly ExcalidrawElement[],
+          appState: {
+            ...excalidrawAPI.getAppState(),
+            exportBackground: withBackground,
+            exportEmbedScene: false,
+          },
+          files: excalidrawAPI.getFiles(),
+        });
+        const svgStr = new XMLSerializer().serializeToString(svg);
+        const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+        download(blob, stamp("painter", "svg"));
+        toast(withBackground ? "已导出 SVG" : "已导出 SVG（透明底）");
+      } catch (err) {
+        console.error(err);
+        toast("导出 SVG 失败", "error");
+      }
+      refocusCanvas();
+    },
+    [excalidrawAPI, toast],
+  );
 
   // 清空画布
   const handleClear = useCallback(() => {
@@ -1386,6 +1412,14 @@ export default function App() {
         </Excalidraw>
       </main>
     </div>
+      {/* SVG 导出前的背景选择弹窗：渲染在 .app 内，才能继承 .app 上的
+          Excalidraw 同源 token（暗色由 .app[data-theme="dark"] 覆盖） */}
+      <ExportSvgDialog
+        open={svgDialogOpen}
+        backgroundColor={svgBgColor}
+        onPick={doExportSvg}
+        onClose={handleCloseSvgDialog}
+      />
   </div>
   );
 }
