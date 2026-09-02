@@ -90,6 +90,33 @@ def main():
         page.wait_for_timeout(400)
         ls = page.evaluate("""() => { const a=window.__painterAPI; const t=a.getSceneElements().find(e=>e.type==='text'); return t.customData && t.customData.letterSpacing; }""")
         logs.append("AFTER_LETTERSPACING: " + json.dumps(ls, ensure_ascii=False))
+        # 滚动原生面板到底部，让 行距/字体间距 滑块可见
+        page.evaluate("""() => {
+          const inner = document.querySelector('.selected-shape-actions:not(.zen-mode-transition)');
+          const outer = document.querySelector('.selected-shape-actions-container');
+          if (inner) inner.scrollTop = inner.scrollHeight;
+          if (outer) outer.scrollTop = outer.scrollHeight;
+          document.querySelectorAll('.text-format-controls .text-format-range input[type=range]').forEach((inp, i) => {
+            if (i === 0) inp.value = '2.00';
+            if (i === 1) inp.value = '12';
+            inp.dispatchEvent(new Event('input', {bubbles:true}));
+            inp.dispatchEvent(new Event('change', {bubbles:true}));
+          });
+        }""")
+        page.wait_for_timeout(400)
+        # 单独截取两个滑块区域
+        sliders = page.query_selector_all('.text-format-controls .text-format-range input[type=range]')
+        if len(sliders) >= 2:
+            b1 = sliders[0].bounding_box()
+            b2 = sliders[1].bounding_box()
+            if b1 and b2:
+                clip = {
+                    "x": min(b1["x"], b2["x"]) - 8,
+                    "y": b1["y"] - 12,
+                    "width": max(b1["x"]+b1["width"], b2["x"]+b2["width"]) - min(b1["x"], b2["x"]) + 16,
+                    "height": b2["y"] + b2["height"] - b1["y"] + 24,
+                }
+                page.screenshot(path="_verify/slider_closeup.png", clip=clip)
         page.screenshot(path="_verify/text_controls.png")
 
         logs.append("CONSOLE_ERRORS: " + json.dumps(errors[:12], ensure_ascii=False))
