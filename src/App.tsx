@@ -609,10 +609,15 @@ export default function App() {
     }
   }, [excalidrawAPI, toast]);
 
-  // 导出 PNG
+  // 导出 PNG：动态选择导出倍率，让长边达到 4K（3840px）。
+  // Excalidraw 导出管线是矢量重栅格化（笔迹/文字按 scale 重新绘制），
+  // 之前不传缩放参数 = 固定 1x，是清晰度不够的根因。
   const handleExportPng = useCallback(async () => {
     if (!excalidrawAPI) return;
     try {
+      let outW = 0;
+      let outH = 0;
+      let outScale = 1;
       const blob = await exportToBlob({
         elements: excalidrawAPI.getSceneElements() as readonly ExcalidrawElement[],
         appState: {
@@ -622,9 +627,28 @@ export default function App() {
         },
         files: excalidrawAPI.getFiles(),
         mimeType: "image/png",
+        getDimensions: (width: number, height: number) => {
+          const TARGET_4K = 3840;
+          const MAX_SCALE = 8;
+          // 浏览器 canvas 安全上限：单边 16384px、总面积约 1.34 亿像素，
+          // 超过会导致导出白屏/失败（Excalidraw 原生同样按此处理）
+          const MAX_SIDE = 16384;
+          const MAX_AREA = 2 ** 27;
+          let scale = TARGET_4K / Math.max(width, height);
+          // 只放大不缩小：小图拉到 4K，大图保持原始尺寸
+          scale = Math.max(1, scale);
+          scale = Math.min(scale, MAX_SCALE);
+          scale = Math.min(scale, MAX_SIDE / Math.max(width, height));
+          scale = Math.min(scale, Math.sqrt(MAX_AREA / (width * height)));
+          scale = Math.max(1, scale);
+          outW = Math.round(width * scale);
+          outH = Math.round(height * scale);
+          outScale = Math.round(scale * 100) / 100;
+          return { width: outW, height: outH, scale };
+        },
       });
       download(blob, stamp("painter", "png"));
-      toast("已导出 PNG");
+      toast(`已导出 PNG（${outW}×${outH}，${outScale}x）`);
     } catch (err) {
       console.error(err);
       toast("导出 PNG 失败", "error");
