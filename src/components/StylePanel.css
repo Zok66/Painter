@@ -459,11 +459,11 @@
   max-height: calc(100vh - 7rem);
 }
 
-/* —— 文字格式化控件：注入原生 .selected-shape-actions-container —— */
+/* —— 文字格式化控件：插入到原生字号 fieldset 之后、文本对齐 fieldset 之前。
+   间距由 .selected-shape-actions 的 row-gap 统一提供，这里不另加 margin / border。 */
 .painter-text-format {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-surface-low, #e9e9e9);
+  margin: 0;
+  padding: 0;
 }
 [data-theme="dark"] .painter-text-format {
   border-top-color: var(--color-surface-low, #2a2a30);

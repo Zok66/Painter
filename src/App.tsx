@@ -299,16 +299,32 @@ export default function App() {
       if (host.parentNode) host.parentNode.removeChild(host);
       return;
     }
+    // 把宿主挂到原生字号 fieldset 之后、文本对齐 fieldset 之前，
+    // 让文字方向 / 行距 / 字体间距在原生面板里保持「字号 → 自研 → 对齐」的阅读顺序。
+    // 锚点选字号（data-testid="fontSize-small"），找不到再退回到容器末尾。
     const tryAppend = () => {
-      // 注入到原生文字面板的内容容器（.selected-shape-actions 内层 DIV，
-      // 承载字体/字号/对齐/颜色等原生控件），让我们的控件以正常文档流排在原生控件之后，
-      // 避免挂到外层 .selected-shape-actions-container（与原生面板同级）导致坐标重叠。
-      // 用 :not(.zen-mode-transition) 排除同名的外层 SECTION。
       const container = document.querySelector(
         ".selected-shape-actions:not(.zen-mode-transition)",
       );
-      if (container && host.parentNode !== container) {
-        container.appendChild(host);
+      if (!container) return;
+      const fontSizeFieldset = container.querySelector(
+        'input[data-testid="fontSize-small"]',
+      )?.closest("fieldset");
+      // 期望位置：fontSizeFieldset 之后。判定方式是 fontSizeFieldset.nextSibling === host。
+      const inCorrectSpot =
+        fontSizeFieldset && fontSizeFieldset.nextSibling === host;
+      if (inCorrectSpot) return;
+      if (fontSizeFieldset) {
+        if (host.parentNode) host.parentNode.removeChild(host);
+        fontSizeFieldset.parentNode.insertBefore(
+          host,
+          fontSizeFieldset.nextSibling,
+        );
+      } else {
+        // 退路：原生面板还没渲染出字号锚点（用户可能正在切换选中元素），先附加到容器末尾
+        if (host.parentNode !== container) {
+          container.appendChild(host);
+        }
       }
     };
     tryAppend();
