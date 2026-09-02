@@ -76,12 +76,16 @@ import {
 import NotebookPanel from "./components/NotebookPanel";
 import ExportSvgDialog from "./components/ExportSvgDialog";
 import type { Point } from "./lib/shapeRecognition";
+import { installPainterTextFormat, painterMeasureText } from "./lib/textFormat";
+import type { TextDirection, TextFormatCustomData } from "./lib/textFormat";
+import TextFormatControls from "./components/TextFormatControls";
 import "./App.css";
 import "./nativeColorPatch";
 
 // 注册场景内渲染钩子（必须在 Excalidraw 渲染前完成）
 installGrainElementRenderer();
 installPaperTextureRenderer();
+installPainterTextFormat();
 const SMART_SHAPE_TOOL = "smart-shape";
 const PEN_TOOL = "pen-brush";
 const FILL_TOOL = "fill-bucket";
@@ -247,6 +251,21 @@ export default function App() {
   const [penWidthKey, setPenWidthKey] = useState<StrokeWidthKey>("medium");
   const penWidthRef = useRef<StrokeWidthKey>("medium");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 文字格式化：选中单个文字元素时记录其格式，供原生面板内的控件读写
+  const [textFormat, setTextFormat] = useState<{
+    id: string;
+    textDirection: TextDirection;
+    lineHeight: number;
+    letterSpacing: number;
+  } | null>(null);
+  // 注入原生文字面板（.selected-shape-actions-container）的宿主节点
+  const textFormatHostRef = useRef<HTMLDivElement | null>(null);
+  if (textFormatHostRef.current === null && typeof document !== "undefined") {
+    const el = document.createElement("div");
+    el.className = "painter-text-format";
+    textFormatHostRef.current = el;
+  }
+  const lastTextFmtRef = useRef<string>("");
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const smartShapePointsRef = useRef<Point[]>([]);
   const smartShapeDrawingRef = useRef(false);
@@ -270,6 +289,37 @@ export default function App() {
     setPaperTemplate(activePage(state).template);
   }, []);
 
+  // 文字格式化：把控件宿主挂进原生文字面板容器（.selected-shape-actions-container），
+  // 与原生字体/字号/对齐共处同一面板。用 MutationObserver 应对面板延迟渲染、
+  // 或 Excalidraw 重渲染时容器节点被替换的情况。
+  useEffect(() => {
+    const host = textFormatHostRef.current;
+    if (!host) return;
+    if (!textFormat) {
+      if (host.parentNode) host.parentNode.removeChild(host);
+      return;
+    }
+    const tryAppend = () => {
+      // 注入到原生文字面板的内容容器（.selected-shape-actions 内层 DIV，
+      // 承载字体/字号/对齐/颜色等原生控件），让我们的控件以正常文档流排在原生控件之后，
+      // 避免挂到外层 .selected-shape-actions-container（与原生面板同级）导致坐标重叠。
+      // 用 :not(.zen-mode-transition) 排除同名的外层 SECTION。
+      const container = document.querySelector(
+        ".selected-shape-actions:not(.zen-mode-transition)",
+      );
+      if (container && host.parentNode !== container) {
+        container.appendChild(host);
+      }
+    };
+    tryAppend();
+    const observer = new MutationObserver(() => tryAppend());
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      if (host.parentNode) host.parentNode.removeChild(host);
+    };
+  }, [textFormat !== null, ready]);
+
   // 自动保存到 localStorage(防抖)
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
@@ -284,6 +334,35 @@ export default function App() {
       if (fillActive && !isFillTool(appState.activeTool)) {
         setFillActive(false);
       }
+      // 文字格式化：检测是否选中单个文字元素，更新面板状态（用签名去重，避免每次变更都重渲染）
+      {
+        const selIds = Object.keys(appState.selectedElementIds || {});
+        let next: {
+          id: string;
+          textDirection: TextDirection;
+          lineHeight: number;
+          letterSpacing: number;
+        } | null = null;
+        if (selIds.length === 1) {
+          const el = elements.find((e) => e.id === selIds[0]);
+          if (el && el.type === "text") {
+            const cd = (el as unknown as { customData?: TextFormatCustomData })
+              .customData;
+            next = {
+              id: el.id,
+              textDirection: (cd?.textDirection as TextDirection) || "horizontal",
+              lineHeight:
+                (el as unknown as { lineHeight?: number }).lineHeight ?? 1.25,
+              letterSpacing: cd?.letterSpacing ?? 0,
+            };
+          }
+        }
+        const sig = next ? JSON.stringify(next) : "null";
+        if (sig !== lastTextFmtRef.current) {
+          lastTextFmtRef.current = sig;
+          setTextFormat(next);
+        }
+      }
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         try {
@@ -295,6 +374,65 @@ export default function App() {
       }, 600);
     },
     [smartShapeActive, fillActive],
+  );
+
+  /** 应用文字格式化变更：合并 customData + lineHeight，重算包围盒后写回场景 */
+  const applyTextFormat = useCallback(
+    (patch: {
+      textDirection?: TextDirection;
+      lineHeight?: number;
+      letterSpacing?: number;
+    }) => {
+      const api = excalidrawAPIRef.current;
+      const targetId = textFormat?.id;
+      if (!api || !targetId) return;
+      const elements = api.getSceneElements() as ExcalidrawElement[];
+      const idx = elements.findIndex((e) => e.id === targetId);
+      if (idx < 0) return;
+      const prev = elements[idx] as ExcalidrawElement & {
+        customData?: TextFormatCustomData;
+        lineHeight?: number;
+        text?: string;
+        fontSize?: number;
+        fontFamily?: number;
+      };
+      const nextCd: TextFormatCustomData = {
+        ...(prev.customData ?? {}),
+        ...(patch.textDirection !== undefined
+          ? { textDirection: patch.textDirection }
+          : {}),
+        ...(patch.letterSpacing !== undefined
+          ? { letterSpacing: patch.letterSpacing }
+          : {}),
+      };
+      const nextLineHeight = patch.lineHeight ?? prev.lineHeight ?? 1.25;
+      const nextEl = {
+        ...prev,
+        lineHeight: nextLineHeight,
+        customData: nextCd,
+      } as ExcalidrawElement;
+      // 重算包围盒（竖排 / 字距会改变宽高，保证选中框与导出尺寸精确）
+      const measured = painterMeasureText({
+        text: prev.text ?? "",
+        fontSize: prev.fontSize ?? 16,
+        lineHeight: nextLineHeight,
+        fontFamily: prev.fontFamily ?? 1,
+        customData: nextCd,
+      });
+      (nextEl as unknown as { width: number; height: number }).width =
+        measured.width;
+      (nextEl as unknown as { width: number; height: number }).height =
+        measured.height;
+      const updated = elements.map((e) => (e.id === targetId ? nextEl : e));
+      api.updateScene({
+        elements: updated,
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      setTextFormat((prevState) =>
+        prevState ? { ...prevState, ...patch } : prevState,
+      );
+    },
+    [textFormat?.id],
   );
 
   const toast = useCallback((message: string, type: "success" | "error" = "success") => {
@@ -1340,6 +1478,18 @@ export default function App() {
           createPortal(
             <FillStyleBar kind={fillKind} onChange={handleFillKindChange} />,
             panelHost,
+          )}
+        {textFormat && textFormatHostRef.current &&
+          createPortal(
+            <TextFormatControls
+              value={{
+                textDirection: textFormat.textDirection,
+                lineHeight: textFormat.lineHeight,
+                letterSpacing: textFormat.letterSpacing,
+              }}
+              onChange={applyTextFormat}
+            />,
+            textFormatHostRef.current,
           )}
         <main className="canvas-wrap">
           {!ready && (

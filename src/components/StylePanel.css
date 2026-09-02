@@ -458,3 +458,39 @@
   margin: 0.5rem 0 0 0;
   max-height: calc(100vh - 7rem);
 }
+
+/* —— 文字格式化控件：注入原生 .selected-shape-actions-container —— */
+.painter-text-format {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-surface-low, #e9e9e9);
+}
+[data-theme="dark"] .painter-text-format {
+  border-top-color: var(--color-surface-low, #2a2a30);
+}
+.text-format-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.text-format-range {
+  width: 100%;
+}
+.text-format-range .range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.text-format-range input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-primary, #6965db);
+  cursor: pointer;
+}
+.text-format-range .range-value {
+  min-width: 3.25rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #6b6b6b);
+}
