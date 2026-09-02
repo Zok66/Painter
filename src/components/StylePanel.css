@@ -479,7 +479,7 @@
 .text-format-range .range-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 .text-format-range input[type="range"] {
   flex: 1;
@@ -532,7 +532,7 @@
   border-radius: 2px;
 }
 .text-format-range .range-value {
-  min-width: 3.25rem;
+  min-width: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-size: 0.75rem;
