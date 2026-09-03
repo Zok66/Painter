@@ -22,6 +22,9 @@ export interface DrawStyle {
   roundness: RoundnessMode;
 }
 
+/** 翻转方向 */
+export type FlipDirection = "horizontal" | "vertical";
+
 interface StylePanelProps {
   style: DrawStyle;
   onChange: (style: Partial<DrawStyle>) => void;
@@ -38,6 +41,10 @@ interface StylePanelProps {
   onPenTypeChange?: (type: PenType) => void;
   /** 是否挂载到原生面板容器（.App-menu__left），用 static 定位融入原生布局 */
   nativeHost?: boolean;
+  /** 水平翻转回调 */
+  onFlipHorizontal?: () => void;
+  /** 垂直翻转回调 */
+  onFlipVertical?: () => void;
 }
 
 // 原生 Draw to shape 面板的图标，SVG 结构直接取自 Excalidraw。
@@ -184,6 +191,30 @@ const EdgeRoundIcon = () => (
     <line x1="12" y1="20" x2="12" y2="20.01" />
     <line x1="16" y1="20" x2="16" y2="20.01" />
     <line x1="20" y1="20" x2="20" y2="20.01" />
+  </IconSvg>
+);
+
+/** 水平翻转图标（左右镜像） */
+const FlipHorizontalIcon = () => (
+  <IconSvg width={20} height={20}>
+    <path stroke="none" d="M0 0h20v20H0z" fill="none" />
+    <path d="M3 4h3v12H3z" strokeWidth="1.5" />
+    <path d="M14 4h3v12h-3z" strokeWidth="1.5" />
+    <path d="M9 3v14" strokeWidth="1.25" />
+    <path d="M6 7l3-3 3 3" strokeWidth="1.25" />
+    <path d="M6 13l3 3 3-3" strokeWidth="1.25" />
+  </IconSvg>
+);
+
+/** 垂直翻转图标（上下镜像） */
+const FlipVerticalIcon = () => (
+  <IconSvg width={20} height={20}>
+    <path stroke="none" d="M0 0h20v20H0z" fill="none" />
+    <path d="M4 3v3h12V3z" strokeWidth="1.5" />
+    <path d="M4 14v3h12v-3z" strokeWidth="1.5" />
+    <path d="M3 9h14" strokeWidth="1.25" />
+    <path d="M7 6l-3 3 3 3" strokeWidth="1.25" />
+    <path d="M13 6l3 3-3 3" strokeWidth="1.25" />
   </IconSvg>
 );
 
@@ -353,6 +384,8 @@ export default function StylePanel({
   penType,
   onPenTypeChange,
   nativeHost = false,
+  onFlipHorizontal,
+  onFlipVertical,
 }: StylePanelProps) {
   const isTransparent = style.backgroundColor === "transparent";
   const isPen = mode === "pen";
@@ -497,6 +530,39 @@ export default function StylePanel({
           value={style.roundness}
           onChange={(roundness) => onChange({ roundness })}
         />
+
+        {/* 翻转 / 镜像 */}
+        {(onFlipHorizontal || onFlipVertical) && (
+          <fieldset>
+            <legend>翻转</legend>
+            <div className="buttonList">
+              {onFlipHorizontal && (
+                <label
+                  title="水平翻转 (Shift+H)"
+                  className="flip-btn"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onFlipHorizontal();
+                  }}
+                >
+                  <FlipHorizontalIcon />
+                </label>
+              )}
+              {onFlipVertical && (
+                <label
+                  title="垂直翻转 (Shift+V)"
+                  className="flip-btn"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onFlipVertical();
+                  }}
+                >
+                  <FlipVerticalIcon />
+                </label>
+              )}
+            </div>
+          </fieldset>
+        )}
       </div>
     </aside>
   );

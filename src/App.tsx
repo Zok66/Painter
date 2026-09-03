@@ -1719,6 +1719,69 @@ export default function App() {
     [handleStyleChange],
   );
 
+  // —— 翻转 / 镜像 ——
+  const flipSelectedElements = useCallback(
+    (direction: "horizontal" | "vertical") => {
+      const api = excalidrawAPIRef.current;
+      if (!api) return;
+
+      const elements = api.getSceneElements() as ExcalidrawElement[];
+      const appState = api.getAppState();
+      const selectedIds = Object.keys(appState.selectedElementIds || {});
+      if (selectedIds.length === 0) return;
+
+      // 找到所有选中的元素
+      const selected = elements.filter((el) =>
+        selectedIds.includes(el.id) && !el.isDeleted,
+      );
+      if (selected.length === 0) return;
+
+      // 计算选中区域的公共包围盒中心
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const el of selected) {
+        minX = Math.min(minX, el.x);
+        minY = Math.min(minY, el.y);
+        maxX = Math.max(maxX, el.x + el.width);
+        maxY = Math.max(maxY, el.y + el.height);
+      }
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      // 对每个选中元素执行翻转
+      const updatedElements = elements.map((el) => {
+        if (!selectedIds.includes(el.id) || el.isDeleted) return el;
+        if (direction === "horizontal") {
+          // 水平翻转：围绕中心X轴镜像
+          const newCenterX = centerX + (centerX - (el.x + el.width / 2));
+          return {
+            ...el,
+            x: newCenterX - el.width / 2,
+            version: el.version + 1,
+            versionNonce: Math.floor(Math.random() * 999999999),
+          };
+        } else {
+          // 垂直翻转：围绕中心Y轴镜像
+          const newCenterY = centerY + (centerY - (el.y + el.height / 2));
+          return {
+            ...el,
+            y: newCenterY - el.height / 2,
+            version: el.version + 1,
+            versionNonce: Math.floor(Math.random() * 999999999),
+          };
+        }
+      });
+
+      api.updateScene({
+        elements: updatedElements,
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+    },
+    [],
+  );
+
+  const handleFlipHorizontal = useCallback(() => flipSelectedElements("horizontal"), [flipSelectedElements]);
+  const handleFlipVertical = useCallback(() => flipSelectedElements("vertical"), [flipSelectedElements]);
+
   // 启用智能画笔：手绘后松手自动识别为形状
   const handleSmartShape = useCallback(() => {
     const api = excalidrawAPIRef.current;
@@ -2285,6 +2348,8 @@ export default function App() {
               penType={activePen}
               onPenTypeChange={handleSelectPen}
               nativeHost={false}
+              onFlipHorizontal={handleFlipHorizontal}
+              onFlipVertical={handleFlipVertical}
             />,
             panelHost,
           )}
