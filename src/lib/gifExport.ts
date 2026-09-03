@@ -1,13 +1,13 @@
-// 帧动画导出 GIF
+// 帧动画导出 GIF（关键帧补间版）
 //
-// 流程：逐帧 exportToCanvas 渲染 → 按全局包围盒对齐到同一张画布 → gifenc 量化编码。
+// 流程：按时间逐帧 buildSceneAtTime 采样 → 算所有输出帧的并集包围盒 →
+// 把每帧对齐到统一画布 → gifenc 量化编码。
 //
-// 两个坑：
-// 1. exportToCanvas 是按「这一帧自己的包围盒」裁剪的，每帧尺寸不一样，
-//    直接塞进 GIF 会让画面来回跳。所以先算出所有帧的并集包围盒，
-//    再把每帧画到统一画布上对应的偏移位置。
-// 2. 纸纹钩子（__painterPaperRender）也挂在 _renderStaticScene 上，
-//    导出时同样会画出来。动画一般不要纸，所以导出前临时切成 blank，导完还原。
+// 两个坑（与逐帧版一致）：
+// 1. exportToCanvas 按单帧自身包围盒裁剪，每帧尺寸不同，直接塞 GIF 会跳动，
+//    故先算并集包围盒再 drawImage 对齐。
+// 2. 纸纹钩子挂在 _renderStaticScene 上，导出也会画出来；动画一般不要纸，
+//    故导出前临时切 blank，导完还原。
 
 import { exportToCanvas } from "@excalidraw/excalidraw";
 import { getCommonBounds } from "@excalidraw/element";
@@ -16,17 +16,16 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import { getPaperTemplate, setPaperTemplate } from "./paperTexture";
 import { stripOnionElements } from "./onionSkin";
-
-export interface GifFrameInput {
-  elements: readonly ExcalidrawElement[];
-  /** 停留帧数 */
-  hold: number;
-}
+import { buildSceneAtTime, type AnimProject } from "./keyframeAnim";
 
 export interface GifExportOptions {
-  frames: GifFrameInput[];
+  project: AnimProject;
+  /** 基准场景（用户编辑的画布元素） */
+  baseElements: readonly ExcalidrawElement[];
   files: BinaryFiles;
   fps: number;
+  /** 总时长（秒） */
+  durationSec: number;
   /** 导出倍率，1 = 原始尺寸 */
   scale: number;
   /** 是否铺背景色；false = 透明底 */
@@ -38,13 +37,19 @@ export interface GifExportOptions {
 /** 导出时留的白边（场景坐标） */
 const PADDING = 8;
 
-function globalBounds(frames: GifFrameInput[]) {
+function globalBounds(
+  project: AnimProject,
+  baseElements: readonly ExcalidrawElement[],
+  total: number,
+  fps: number,
+) {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const frame of frames) {
-    const els = stripOnionElements(frame.elements);
+  for (let i = 0; i < total; i++) {
+    const t = i / fps;
+    const els = stripOnionElements(buildSceneAtTime(project, baseElements, t));
     if (!els.length) continue;
     const [x1, y1, x2, y2] = getCommonBounds(
       els as unknown as Parameters<typeof getCommonBounds>[0],
@@ -59,16 +64,24 @@ function globalBounds(frames: GifFrameInput[]) {
 }
 
 export async function exportAnimationToGif({
-  frames,
+  project,
+  baseElements,
   files,
   fps,
+  durationSec,
   scale,
   background,
   backgroundColor,
   onProgress,
 }: GifExportOptions): Promise<Blob> {
   const safeScale = Math.max(0.5, Math.min(4, scale || 1));
-  const [gMinX, gMinY, gMaxX, gMaxY] = globalBounds(frames);
+  const total = Math.max(1, Math.round(durationSec * fps));
+  const [gMinX, gMinY, gMaxX, gMaxY] = globalBounds(
+    project,
+    baseElements,
+    total,
+    fps,
+  );
   const width = Math.max(1, Math.round((gMaxX - gMinX + PADDING * 2) * safeScale));
   const height = Math.max(1, Math.round((gMaxY - gMinY + PADDING * 2) * safeScale));
 
@@ -79,16 +92,16 @@ export async function exportAnimationToGif({
   if (!ctx) throw new Error("无法创建导出画布");
 
   const gif = GIFEncoder();
-  // gifenc 的 writeFrame.delay 期望毫秒，先算好每帧毫秒数
+  // gifenc 的 writeFrame.delay 期望毫秒
   const perFrameMs = 1000 / Math.max(1, fps);
 
   const paperBefore = getPaperTemplate();
   setPaperTemplate("blank");
 
   try {
-    for (let i = 0; i < frames.length; i++) {
-      const frame = frames[i];
-      const els = stripOnionElements(frame.elements);
+    for (let i = 0; i < total; i++) {
+      const t = i / fps;
+      const els = stripOnionElements(buildSceneAtTime(project, baseElements, t));
       ctx.clearRect(0, 0, width, height);
 
       if (els.length) {
@@ -115,23 +128,19 @@ export async function exportAnimationToGif({
         );
         // 单帧画布左上角对应场景 (fMinX-PADDING, fMinY-PADDING)，
         // composite 起点对应场景 (gMinX-PADDING, gMinY-PADDING)，
-        // 所以元素 bbox 左上 (fMinX, fMinY) 应落在 composite 的 (fMinX-gMinX, fMinY-gMinY)。
+        // 故元素 bbox 左上 (fMinX, fMinY) 落在 composite 的 (fMinX-gMinX, fMinY-gMinY)。
         const dx = Math.round((fMinX - gMinX) * safeScale);
         const dy = Math.round((fMinY - gMinY) * safeScale);
         ctx.drawImage(canvas, dx, dy, canvas.width, canvas.height);
       }
 
       const imageData = ctx.getImageData(0, 0, width, height);
-      // gifenc 的 quantize/applyPalette 要求 flat 的 Uint8ClampedArray（逐字节 RGBA），
-      // 直接传 imageData.data；千万不要包成 Uint32Array，否则会抛
-      // "quantize() expected RGBA Uint8Array data"。
+      // gifenc 要求 flat 的 Uint8ClampedArray（逐字节 RGBA），直接传 imageData.data
       const rgba = imageData.data;
       const palette = quantize(rgba, 256, { format: "rgba4444", oneBitAlpha: true });
       const index = applyPalette(rgba, palette, "rgba4444");
-      const delay = Math.round(perFrameMs * Math.max(1, frame.hold));
+      const delay = Math.round(perFrameMs);
       const transparent = !background;
-      // 透明底时，把调色板里首个纯透明项设为透明索引；否则 gifenc 默认 0 可能
-      // 误把不透明色当成透明，背景闪现色块。
       let transparentIndex = 0;
       if (transparent) {
         const idx = palette.findIndex((c) => c.length >= 4 && c[3] === 0);
@@ -142,10 +151,9 @@ export async function exportAnimationToGif({
         delay,
         transparent,
         transparentIndex,
-        // 只在第一帧写循环次数，0 = 无限循环
         repeat: i === 0 ? 0 : -1,
       });
-      onProgress?.(i + 1, frames.length);
+      onProgress?.(i + 1, total);
     }
   } finally {
     setPaperTemplate(paperBefore);
@@ -164,6 +172,5 @@ export function downloadBlob(blob: Blob, filename: string) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // 立刻 revoke 在部分浏览器会打断下载，延后释放
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }

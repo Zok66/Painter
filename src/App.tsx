@@ -77,23 +77,25 @@ import NotebookPanel from "./components/NotebookPanel";
 import ExportSvgDialog from "./components/ExportSvgDialog";
 import AnimationTimeline from "./components/AnimationTimeline";
 import {
-  deleteFrameScene,
+  buildSceneAtTime,
+  deleteProject,
   deleteTrack,
-  findFrameIndex,
-  insertFrameAfter,
-  loadFrameScene,
-  loadTrack,
-  moveFrame,
-  removeFrame,
-  saveFrameScene,
-  saveTrack,
-  setFrameHold,
-  type AnimTrack,
-  type OnionConfig,
-} from "./lib/animation";
+  loadBaseScene,
+  loadProject,
+  propsFromElement,
+  removeKeyframe,
+  saveBaseScene,
+  saveProject,
+  setKeyframeEasing,
+  upsertKeyframe,
+  type AnimProject,
+  type AnimProps,
+  type EasingType,
+} from "./lib/keyframeAnim";
 import {
   composeSceneWithOnion,
   stripOnionElements,
+  type OnionConfig,
 } from "./lib/onionSkin";
 import { downloadBlob, exportAnimationToGif } from "./lib/gifExport";
 import type { Point } from "./lib/shapeRecognition";
@@ -107,6 +109,21 @@ import { DEFAULT_VERTICAL_ALIGN } from "./lib/textFormat";
 import TextFormatControls from "./components/TextFormatControls";
 import "./App.css";
 import "./nativeColorPatch";
+
+// 固定配置：传给 <Excalidraw> 的 UIOptions 必须是稳定引用，否则每次父组件
+// 重渲染都会生成新对象，导致 Excalidraw 反复重渲染并重新 emit onChange，
+// 在动画自动关键帧等路径上可能触发无限 setState（白屏）。
+const EXCALIDRAW_UI_OPTIONS = {
+  canvasActions: {
+    loadScene: false,
+    saveToActiveFile: false,
+    export: { saveFileToDisk: true },
+    toggleTheme: true,
+  },
+  tools: {
+    image: true,
+  },
+};
 
 // 注册场景内渲染钩子（必须在 Excalidraw 渲染前完成）
 installGrainElementRenderer();
@@ -276,24 +293,24 @@ export default function App() {
   // 更多画笔的笔尖粗细档位（与智能画笔的 strokeWidthKey 相互独立）
   const [penWidthKey, setPenWidthKey] = useState<StrokeWidthKey>("medium");
   const penWidthRef = useRef<StrokeWidthKey>("medium");
-  // ── 帧动画 ─────────────────────────────────────────────
-  // 轨道挂在「当前笔记本页」上：切页时整条帧序列跟着换，不同页各画各的动画。
-  // 画布上显示的永远是「当前帧」的内容，存页 / 导出前记得剥掉洋葱皮幽灵。
-  const [animTrack, setAnimTrack] = useState<AnimTrack>(() =>
-    loadTrack(notebookState.activePageId),
+  // ── 帧动画（关键帧补间）─────────────────────────────────────
+  // 数据挂在「当前笔记本页」上：切页整条工程跟着换。
+  // 基准场景 = 进入动画面板时抓取的画布内容；关键帧记录属性差异，播放/导出时插值。
+  const [animProject, setAnimProject] = useState<AnimProject>(() =>
+    loadProject(notebookState.activePageId),
   );
-  const animTrackRef = useRef<AnimTrack>(animTrack);
-  const [currentFrameId, setCurrentFrameId] = useState<string>(
-    () => loadTrack(notebookState.activePageId).frames[0].id,
-  );
-  const currentFrameIdRef = useRef<string>(currentFrameId);
+  const animProjectRef = useRef<AnimProject>(animProject);
   const [animOpen, setAnimOpen] = useState(false);
   const [animPlaying, setAnimPlaying] = useState(false);
   const animPlayingRef = useRef(false);
-  // 播放中的标记要给防抖保存 / 翻帧用（它们读 ref 不读 state，避免闭包旧值）
   useEffect(() => {
     animPlayingRef.current = animPlaying;
   }, [animPlaying]);
+  const [playheadT, setPlayheadT] = useState(0);
+  const playheadRef = useRef(0);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [onion, setOnion] = useState<OnionConfig>({ enabled: true, before: 1, after: 1, opacity: 30 });
+  const animApplyingRef = useRef(false);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ done: 0, total: 0 });
@@ -431,6 +448,45 @@ export default function App() {
           setTextFormat(next);
         }
       }
+      // 动画面板打开时：记录选中元素，并把用户在画布上的改动即时录成关键帧
+      // （剪映式自动关键帧：在播放头处拖动元素 = 更新该时刻关键帧）
+      if (animOpen && !animPlayingRef.current && !animApplyingRef.current) {
+        const selIds = Object.keys(appState.selectedElementIds || {});
+        const selId = selIds.length === 1 ? selIds[0] : null;
+        selectedElementIdRef.current = selId;
+        setSelectedElementId(selId);
+        if (selId) {
+          const cur = elements.find((e) => e.id === selId);
+          const prev = lastShownPropsRef.current.get(selId);
+          if (cur && prev) {
+            const now = propsFromElement(cur);
+            if (
+              now.x !== prev.x ||
+              now.y !== prev.y ||
+              now.width !== prev.width ||
+              now.height !== prev.height ||
+              now.angle !== prev.angle ||
+              now.opacity !== prev.opacity
+            ) {
+              // 拖动过程中录关键帧：只更新工程与内存，不重铺画布（避免和拖拽打架）
+              const next = upsertKeyframe(
+                animProjectRef.current,
+                selId,
+                playheadRef.current,
+                now,
+              );
+              saveProject(notebookStateRef.current.activePageId, next);
+              animProjectRef.current = next;
+              setAnimProject(next);
+              setSceneVersion((v) => v + 1);
+              // 关键：同步刷新「上次铺到画布的快照」，否则 App 重渲染导致 Excalidraw
+              // 因 props 不稳定而重渲染、再次 emit onChange 时，会把同一位置误判为「又变了」，
+              // 进而无限 setState（Maximum update depth → 白屏）。
+              lastShownPropsRef.current.set(selId, now);
+            }
+          }
+        }
+      }
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         // 播放中 updateScene 也会触发 onChange，但那不是编辑内容，不能落盘
@@ -444,14 +500,13 @@ export default function App() {
             "local",
           );
           savePageScene(notebookStateRef.current.activePageId, json);
-          saveFrameScene(currentFrameIdRef.current, json);
           setSceneVersion((v) => v + 1);
         } catch {
           /* 忽略写入错误 */
         }
       }, 600);
     },
-    [smartShapeActive, fillActive],
+    [smartShapeActive, fillActive, animOpen],
   );
 
   /** 应用文字格式化变更：合并 customData + lineHeight，重算包围盒后写回场景 */
@@ -570,269 +625,205 @@ export default function App() {
     saveNotebookState(next);
   }, []);
 
-  // —— 帧动画 ——
+  // —— 帧动画（关键帧补间 · 剪映逻辑）——
+  // 基准场景 = 进入动画面板时抓取的画布真实内容；关键帧记录属性差异，播放/导出时插值。
 
-  /** 画布上属于「当前帧」的真实内容：剥掉洋葱皮幽灵元素 */
-  const currentFrameElements = useCallback((): ExcalidrawElement[] => {
-    const api = excalidrawAPIRef.current;
-    if (!api) return [];
-    return stripOnionElements(
-      api.getSceneElements() as readonly ExcalidrawElement[],
-    );
-  }, []);
+  /** 内存里的基准场景：进入动画时抓取一次，重铺 / 播放 / 导出都基于它 */
+  const baseElementsRef = useRef<ExcalidrawElement[]>([]);
+  /** 最近一次铺到画布上的元素属性（按 id），用于在 onChange 里识别用户是否真改了东西 */
+  const lastShownPropsRef = useRef<Map<string, AnimProps>>(new Map());
+  /** 画布当前选中的单个元素 id（同步写，避免 handleChange 闭包拿到旧值） */
+  const selectedElementIdRef = useRef<string | null>(null);
 
-  /** 当前帧落盘。切帧 / 新建 / 删除 / 导出的第一步都要先调它 */
-  const flushCurrentFrame = useCallback(() => {
+  /** 把工程落到画布：buildSceneAtTime 插值 + 洋葱皮，写到 Excalidraw。
+   *  apply=false 时只更新内存/state 与属性快照，不重铺（拖拽过程中调用，避免和拖拽打架）。 */
+  const applyProjectToCanvas = useCallback(
+    (t: number, opts?: { apply?: boolean }) => {
+      const apply = opts?.apply !== false;
+      const p = animProjectRef.current;
+      const scene = buildSceneAtTime(p, baseElementsRef.current, t);
+      const shown = new Map<string, AnimProps>();
+      for (const el of scene) shown.set(el.id, propsFromElement(el));
+      lastShownPropsRef.current = shown;
+      if (!apply) return;
+      const api = excalidrawAPIRef.current;
+      if (!api) return;
+      animApplyingRef.current = true;
+      if (!onion.enabled) {
+        api.updateScene({ elements: scene, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+        api.refresh();
+        setTimeout(() => { animApplyingRef.current = false; }, 0);
+        return;
+      }
+      const stepT = 1 / Math.max(1, p.fps);
+      const before: ExcalidrawElement[][] = [];
+      const after: ExcalidrawElement[][] = [];
+      for (let d = onion.before; d >= 1; d--) {
+        const tt = t - d * stepT;
+        if (tt < 0) continue;
+        before.unshift(buildSceneAtTime(p, baseElementsRef.current, tt));
+      }
+      for (let d = 1; d <= onion.after; d++) {
+        const tt = t + d * stepT;
+        if (tt > p.durationSec) continue;
+        after.push(buildSceneAtTime(p, baseElementsRef.current, tt));
+      }
+      const next = composeSceneWithOnion({ current: scene, before, after, config: onion });
+      api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+      api.refresh();
+      setTimeout(() => { animApplyingRef.current = false; }, 0);
+    },
+    [onion],
+  );
+
+  /** 工程落地：存盘 + 同步 ref/state；apply=true（默认）时顺手重铺画布 */
+  const commitProject = useCallback(
+    (p: AnimProject, opts?: { apply?: boolean }) => {
+      saveProject(notebookStateRef.current.activePageId, p);
+      animProjectRef.current = p;
+      setAnimProject(p);
+      setSceneVersion((v) => v + 1);
+      if (animOpen && (opts?.apply !== false)) applyProjectToCanvas(playheadRef.current);
+    },
+    [animOpen, applyProjectToCanvas],
+  );
+
+  /** 进入面板：把当前画布抓成基准场景并存盘 */
+  const captureBaseScene = useCallback(() => {
     const api = excalidrawAPIRef.current;
     if (!api) return;
+    const els = stripOnionElements(api.getSceneElements() as ExcalidrawElement[]);
+    baseElementsRef.current = els;
     try {
-      const json = serializeAsJSON(
-        currentFrameElements(),
-        api.getAppState(),
-        api.getFiles(),
-        "local",
-      );
-      saveFrameScene(currentFrameIdRef.current, json);
+      const json = serializeAsJSON(els, api.getAppState(), api.getFiles(), "local");
+      saveBaseScene(notebookStateRef.current.activePageId, json);
     } catch {
       /* 忽略写入错误 */
     }
-  }, [currentFrameElements]);
+  }, []);
+  // —— 时间轴回调 ——
 
-  /**
-   * 读某帧元素。
-   * 当前帧取实时内容（含还没落盘的改动），其余帧取快照并 restore ——
-   * 存的是序列化格式，直接回灌会缺字段。
-   */
-  const loadFrameElementsById = useCallback(
-    (frameId: string): ExcalidrawElement[] => {
-      if (frameId === currentFrameIdRef.current) return currentFrameElements();
-      const scene = loadFrameScene(frameId) as
-        | { elements?: ExcalidrawElement[] }
-        | null;
-      return scene?.elements
-        ? (restoreElements(scene.elements, null, {
-            repairBindings: true,
-          }) as ExcalidrawElement[])
-        : [];
-    },
-    [currentFrameElements],
-  );
+  /** 在播放头处为选中元素加/更关键帧（取该元素当前画布属性） */
+  const handleAddKeyframe = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api || !selectedElementIdRef.current) {
+      toast("先在画布选中要动画的元素", "error");
+      return;
+    }
+    const selId = selectedElementIdRef.current;
+    const el = (api.getSceneElements() as ExcalidrawElement[]).find(
+      (e) => e.id === selId,
+    );
+    if (!el) return;
+    commitProject(
+      upsertKeyframe(
+        animProjectRef.current,
+        selId,
+        playheadRef.current,
+        propsFromElement(el),
+      ),
+    );
+  }, [toast, commitProject]);
 
-  /** 读某帧的图片等二进制资源（当前帧的资源本来就在场景里） */
-  const loadFrameFilesById = useCallback((frameId: string): BinaryFileData[] => {
-    if (frameId === currentFrameIdRef.current) return [];
-    const scene = loadFrameScene(frameId) as
-      | { files?: Record<string, BinaryFileData> }
-      | null;
-    return Object.values(scene?.files ?? {}) as BinaryFileData[];
+  /** 点轨道 = 在画布上选中那个元素 */
+  const handleSelectTrack = useCallback((id: string) => {
+    setSelectedElementId(id);
+    selectedElementIdRef.current = id;
+    const api = excalidrawAPIRef.current;
+    if (api) {
+      api.updateScene({
+        appState: { selectedElementIds: { [id]: true } } as never,
+        captureUpdate: CaptureUpdateAction.EVENTUALLY,
+      });
+    }
   }, []);
 
-  /** 收集洋葱皮要用的前后相邻帧内容 */
-  const collectOnionNeighbors = useCallback(
-    (track: AnimTrack, frameId: string) => {
-      const idx = findFrameIndex(track, frameId);
-      const before: ExcalidrawElement[][] = [];
-      const after: ExcalidrawElement[][] = [];
-      if (idx < 0) return { before, after };
-      for (let d = 1; d <= track.onion.before; d++) {
-        const f = track.frames[idx - d];
-        if (!f) break;
-        before.push(loadFrameElementsById(f.id));
-      }
-      for (let d = 1; d <= track.onion.after; d++) {
-        const f = track.frames[idx + d];
-        if (!f) break;
-        after.push(loadFrameElementsById(f.id));
-      }
-      return { before, after };
+  const handleDeleteKeyframe = useCallback(
+    (elementId: string, kfId: string) => {
+      commitProject(removeKeyframe(animProjectRef.current, elementId, kfId));
     },
-    [loadFrameElementsById],
+    [commitProject],
   );
 
-  /**
-   * 把某一帧灌进画布，并按洋葱皮配置重铺幽灵元素。
-   * keepCurrent：沿用画布现有内容（改洋葱皮设置时用），不重新读快照。
-   */
-  const applyFrameToCanvas = useCallback(
-    (frameId: string, opts?: { keepCurrent?: boolean }) => {
-      const api = excalidrawAPIRef.current;
-      if (!api) return;
-      const track = animTrackRef.current;
-      const base = opts?.keepCurrent
-        ? currentFrameElements()
-        : loadFrameElementsById(frameId);
-      const { before, after } = collectOnionNeighbors(track, frameId);
-      const next = composeSceneWithOnion({
-        current: base,
-        before,
-        after,
-        config: track.onion,
-      });
-      api.updateScene({
-        elements: next,
-        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-      });
-      if (!opts?.keepCurrent) {
-        const files = loadFrameFilesById(frameId);
-        if (files.length) api.addFiles(files);
-      }
-      api.refresh();
-    },
-    [
-      currentFrameElements,
-      collectOnionNeighbors,
-      loadFrameElementsById,
-      loadFrameFilesById,
-    ],
-  );
-
-  /**
-   * 轨道落地：存盘 + 同步 ref/state + 可选切帧。
-   * rebase = true 时从快照重新读当前帧内容（切帧 / 新建帧），
-   * 否则沿用画布内容只重铺洋葱皮（改 fps / 停留 / 洋葱皮设置）。
-   */
-  const commitTrack = useCallback(
-    (
-      track: AnimTrack,
-      opts?: { frameId?: string; rebase?: boolean; refresh?: boolean },
-    ) => {
-      saveTrack(notebookStateRef.current.activePageId, track);
-      animTrackRef.current = track;
-      setAnimTrack(track);
-      if (opts?.frameId) {
-        currentFrameIdRef.current = opts.frameId;
-        setCurrentFrameId(opts.frameId);
-      }
-      if (opts?.refresh !== false) {
-        applyFrameToCanvas(currentFrameIdRef.current, {
-          keepCurrent: !opts?.rebase,
-        });
-      }
-      setSceneVersion((v) => v + 1);
-    },
-    [applyFrameToCanvas],
-  );
-
-  /** 首次进入某一页时，把画布现有内容当作第 1 帧 */
-  const ensureFrameSnapshot = useCallback(() => {
-    if (!loadFrameScene(currentFrameIdRef.current)) flushCurrentFrame();
-  }, [flushCurrentFrame]);
-
-  const gotoFrame = useCallback(
-    (frameId: string) => {
-      if (frameId === currentFrameIdRef.current) return;
-      flushCurrentFrame();
-      currentFrameIdRef.current = frameId;
-      setCurrentFrameId(frameId);
-      applyFrameToCanvas(frameId);
-      setSceneVersion((v) => v + 1);
-      refocusCanvas();
-    },
-    [flushCurrentFrame, applyFrameToCanvas],
-  );
-
-  /** 相对跳转：dir = -1 上一帧 / +1 下一帧，到头就绕回另一端 */
-  const stepFrame = useCallback(
-    (dir: number) => {
-      if (animPlayingRef.current) return;
-      const track = animTrackRef.current;
-      const idx = findFrameIndex(track, currentFrameIdRef.current);
-      if (idx < 0 || track.frames.length < 2) return;
-      const next =
-        track.frames[(idx + dir + track.frames.length) % track.frames.length];
-      gotoFrame(next.id);
-    },
-    [gotoFrame],
-  );
-
-  const handleAddFrame = useCallback(() => {
-    flushCurrentFrame();
-    const { track, frameId } = insertFrameAfter(
-      animTrackRef.current,
-      currentFrameIdRef.current,
-    );
-    // 空白帧：存空场景，切过去画布就是干净的
-    saveFrameScene(frameId, { elements: [], files: {} });
-    commitTrack(track, { frameId, rebase: true });
-    refocusCanvas();
-  }, [flushCurrentFrame, commitTrack]);
-
-  /** 复制帧：逐帧动画最常用的动作 —— 沿用上一帧继续改 */
-  const handleDuplicateFrame = useCallback(
-    (frameId: string) => {
-      const api = excalidrawAPIRef.current;
-      if (!api) return;
-      flushCurrentFrame();
-      const source = loadFrameElementsById(frameId);
-      const { track, frameId: newId } = insertFrameAfter(
-        animTrackRef.current,
-        frameId,
+  /** 拖动关键帧菱形 = 改时间点（保留属性与缓动） */
+  const handleMoveKeyframe = useCallback(
+    (elementId: string, kfId: string, t: number) => {
+      const p = animProjectRef.current;
+      const track = p.tracks.find((tr) => tr.elementId === elementId);
+      const kf = track?.keyframes.find((k) => k.id === kfId);
+      if (!kf) return;
+      const without = removeKeyframe(p, elementId, kfId);
+      commitProject(
+        upsertKeyframe(
+          without,
+          elementId,
+          Math.max(0, Math.min(t, p.durationSec)),
+          kf.props,
+          kf.easing,
+        ),
       );
-      const scene = loadFrameScene(frameId) as
-        | { files?: Record<string, BinaryFileData> }
-        | null;
-      saveFrameScene(newId, {
-        elements: source,
-        files: scene?.files ?? {},
-      });
-      commitTrack(track, { frameId: newId, rebase: true });
-      refocusCanvas();
     },
-    [flushCurrentFrame, loadFrameElementsById, commitTrack],
+    [commitProject],
   );
 
-  const handleDeleteFrame = useCallback(
-    (frameId: string) => {
-      const track = animTrackRef.current;
-      if (track.frames.length <= 1) return;
-      const idx = findFrameIndex(track, frameId);
-      const next = removeFrame(track, frameId);
-      deleteFrameScene(frameId);
-      // 删的正好是当前帧 → 落到原位置的下一帧（末尾则取新的最后一帧）
-      if (frameId === currentFrameIdRef.current) {
-        const fallback = next.frames[Math.min(idx, next.frames.length - 1)];
-        commitTrack(next, { frameId: fallback.id, rebase: true });
-      } else {
-        commitTrack(next);
-      }
-      refocusCanvas();
+  const handleSetEasing = useCallback(
+    (elementId: string, kfId: string, easing: EasingType) => {
+      commitProject(
+        setKeyframeEasing(animProjectRef.current, elementId, kfId, easing),
+      );
     },
-    [commitTrack],
+    [commitProject],
   );
 
-  const handleMoveFrame = useCallback(
-    (frameId: string, toIndex: number) => {
-      commitTrack(moveFrame(animTrackRef.current, frameId, toIndex), {
-        rebase: true,
-      });
+  const handleDeleteTrack = useCallback(
+    (elementId: string) => {
+      commitProject(deleteTrack(animProjectRef.current, elementId));
     },
-    [commitTrack],
-  );
-
-  const handleHoldChange = useCallback(
-    (frameId: string, hold: number) => {
-      commitTrack(setFrameHold(animTrackRef.current, frameId, hold), {
-        refresh: false,
-      });
-    },
-    [commitTrack],
+    [commitProject],
   );
 
   const handleFpsChange = useCallback(
     (fps: number) => {
-      commitTrack({ ...animTrackRef.current, fps }, { refresh: false });
+      commitProject(
+        { ...animProjectRef.current, fps: Math.max(1, Math.round(fps)) },
+        { apply: false },
+      );
     },
-    [commitTrack],
+    [commitProject],
+  );
+
+  const handleDurationChange = useCallback(
+    (sec: number) => {
+      commitProject({
+        ...animProjectRef.current,
+        durationSec: Math.max(0.1, sec),
+      });
+    },
+    [commitProject],
   );
 
   const handleOnionChange = useCallback(
-    (onion: OnionConfig) => {
-      commitTrack({ ...animTrackRef.current, onion });
+    (next: OnionConfig) => {
+      setOnion(next);
+      // 洋葱皮只影响显示，重铺即可，不写工程
+      if (animOpen) applyProjectToCanvas(playheadRef.current);
     },
-    [commitTrack],
+    [animOpen, applyProjectToCanvas],
   );
 
-  /** 停止播放：清定时器，回到编辑中的那一帧（含洋葱皮） */
+  /** 拖动播放头：跳到某时刻并刷新预览（播放中忽略） */
+  const handlePlayheadChange = useCallback(
+    (t: number) => {
+      if (animPlayingRef.current) return;
+      const tt = Math.max(0, Math.min(t, animProjectRef.current.durationSec));
+      playheadRef.current = tt;
+      setPlayheadT(tt);
+      applyProjectToCanvas(tt);
+    },
+    [applyProjectToCanvas],
+  );
+
+  /** 停止播放：清定时器 */
   const stopPlayback = useCallback(() => {
     if (playTimerRef.current) {
       clearTimeout(playTimerRef.current);
@@ -841,73 +832,73 @@ export default function App() {
     setAnimPlaying(false);
   }, []);
 
-  /**
-   * 播放：先把所有帧读进内存，之后只 updateScene，不碰磁盘。
-   * 用 EVENTUALLY 让播放过程不进撤销栈，停止时回到原帧内容不受影响
-   * （内容在开播前已经落盘 + 内存里各留一份）。
-   */
+  /** 播放：按时间逐帧 buildSceneAtTime 采样，只 updateScene 不碰磁盘 */
   const startPlayback = useCallback(() => {
     const api = excalidrawAPIRef.current;
     if (!api) return;
-    const track = animTrackRef.current;
-    if (track.frames.length < 2) {
-      toast("至少两帧才能播放", "error");
+    const p = animProjectRef.current;
+    if (p.tracks.length === 0) {
+      toast("先添加关键帧再播放", "error");
       return;
     }
-    flushCurrentFrame();
-    const clips = track.frames.map((f) => ({
-      elements: loadFrameElementsById(f.id),
-      hold: f.hold,
-    }));
+    const fps = Math.max(1, p.fps);
+    const total = Math.max(1, Math.round(p.durationSec * fps));
+    const perFrameMs = 1000 / fps;
     setAnimPlaying(true);
     let i = 0;
     const step = () => {
-      const clip = clips[i];
-      api.updateScene({
-        elements: clip.elements,
-        captureUpdate: CaptureUpdateAction.EVENTUALLY,
-      });
-      i = (i + 1) % clips.length;
-      playTimerRef.current = setTimeout(step, (1000 / track.fps) * clip.hold);
+      if (!animPlayingRef.current) return;
+      const t = i / fps;
+      const scene = buildSceneAtTime(p, baseElementsRef.current, t);
+      api.updateScene({ elements: scene, captureUpdate: CaptureUpdateAction.EVENTUALLY });
+      i += 1;
+      if (i > total) {
+        stopPlayback();
+        playheadRef.current = 0;
+        setPlayheadT(0);
+        applyProjectToCanvas(0);
+        return;
+      }
+      playTimerRef.current = setTimeout(step, perFrameMs);
     };
     step();
-  }, [flushCurrentFrame, loadFrameElementsById, toast]);
+  }, [toast, stopPlayback, applyProjectToCanvas]);
 
   const handleTogglePlay = useCallback(() => {
     if (animPlaying) {
       stopPlayback();
-      // 回到编辑帧：播放最后一帧的内容还留在画布上，用快照覆盖回去
-      applyFrameToCanvas(currentFrameIdRef.current);
-      refocusCanvas();
+      applyProjectToCanvas(playheadRef.current);
     } else {
       startPlayback();
     }
-  }, [animPlaying, stopPlayback, applyFrameToCanvas, startPlayback]);
+  }, [animPlaying, stopPlayback, applyProjectToCanvas, startPlayback]);
 
   const handleExportGif = useCallback(
     async (scale: number, background: boolean) => {
       const api = excalidrawAPIRef.current;
       if (!api) return;
-      const track = animTrackRef.current;
-      flushCurrentFrame();
+      const p = animProjectRef.current;
+      if (p.tracks.length === 0) {
+        toast("没有可导出的动画", "error");
+        return;
+      }
+      const total = Math.max(1, Math.round(p.durationSec * p.fps));
       setExporting(true);
-      setExportProgress({ done: 0, total: track.frames.length });
+      setExportProgress({ done: 0, total });
       try {
-        const frames = track.frames.map((f) => ({
-          elements: loadFrameElementsById(f.id),
-          hold: f.hold,
-        }));
         const blob = await exportAnimationToGif({
-          frames,
+          project: p,
+          baseElements: baseElementsRef.current,
           files: api.getFiles(),
-          fps: track.fps,
+          fps: p.fps,
+          durationSec: p.durationSec,
           scale,
           background,
           backgroundColor: api.getAppState().viewBackgroundColor || "#ffffff",
-          onProgress: (done, total) => setExportProgress({ done, total }),
+          onProgress: (done, totalN) => setExportProgress({ done, total: totalN }),
         });
         downloadBlob(blob, stamp("animation", "gif"));
-        toast(`已导出 GIF（${track.frames.length} 帧）`);
+        toast(`已导出 GIF（${total} 帧）`);
       } catch (err) {
         console.error(err);
         toast("导出 GIF 失败", "error");
@@ -915,46 +906,42 @@ export default function App() {
         setExporting(false);
       }
     },
-    [flushCurrentFrame, loadFrameElementsById, toast],
+    [toast],
   );
 
   /**
    * 开关动画面板。
-   * 打开：确保第 1 帧有快照（首次把画布内容吃进来），并铺上洋葱皮。
-   * 关闭：停播放 + 摘掉幽灵元素，画布只留当前帧真实内容。
+   * 打开：抓取当前画布为基准场景，铺上 t=0（含洋葱皮）预览。
+   * 关闭：停播放 + 摘掉插值，画布只留基准场景真实内容。
    */
   const handleToggleAnim = useCallback(() => {
     if (animOpen) {
       stopPlayback();
       const api = excalidrawAPIRef.current;
       if (api) {
-        flushCurrentFrame();
+        animApplyingRef.current = true;
         api.updateScene({
-          elements: currentFrameElements(),
+          elements: baseElementsRef.current,
           captureUpdate: CaptureUpdateAction.IMMEDIATELY,
         });
         api.refresh();
+        setTimeout(() => { animApplyingRef.current = false; }, 0);
       }
       setAnimOpen(false);
+      lastShownPropsRef.current = new Map();
       refocusCanvas();
       return;
     }
-    ensureFrameSnapshot();
+    captureBaseScene();
     setAnimOpen(true);
-    // 洋葱皮此刻才生效：面板没打开时不往场景里塞幽灵
-    requestAnimationFrame(() => {
-      applyFrameToCanvas(currentFrameIdRef.current, { keepCurrent: true });
-    });
-  }, [
-    animOpen,
-    stopPlayback,
-    flushCurrentFrame,
-    currentFrameElements,
-    ensureFrameSnapshot,
-    applyFrameToCanvas,
-  ]);
+    setPlayheadT(0);
+    playheadRef.current = 0;
+    setSelectedElementId(null);
+    selectedElementIdRef.current = null;
+    requestAnimationFrame(() => applyProjectToCanvas(0));
+  }, [animOpen, stopPlayback, captureBaseScene, applyProjectToCanvas]);
 
-  // 面板打开时：空格播放 / 停止，逗号句号前后翻帧
+  // 面板打开时：空格播放 / 停止，逗号句号前后挪播放头
   useEffect(() => {
     if (!animOpen) return;
     const handler = (e: KeyboardEvent) => {
@@ -972,15 +959,19 @@ export default function App() {
         handleTogglePlay();
       } else if (e.key === ",") {
         e.preventDefault();
-        stepFrame(-1);
+        handlePlayheadChange(
+          playheadRef.current - 1 / Math.max(1, animProjectRef.current.fps),
+        );
       } else if (e.key === ".") {
         e.preventDefault();
-        stepFrame(1);
+        handlePlayheadChange(
+          playheadRef.current + 1 / Math.max(1, animProjectRef.current.fps),
+        );
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [animOpen, handleTogglePlay, stepFrame]);
+  }, [animOpen, handleTogglePlay, handlePlayheadChange]);
 
   // 组件卸载 / 关面板时收掉播放定时器
   useEffect(() => () => stopPlayback(), [stopPlayback]);
@@ -998,23 +989,20 @@ export default function App() {
       debounceRef.current = null;
     }
     try {
-      // 剥掉洋葱皮幽灵：页快照只存这一帧的真实内容
-      const json = serializeAsJSON(
-        currentFrameElements(),
-        api.getAppState(),
-        api.getFiles(),
-        "local",
-      );
+      // 面板打开时存基准场景（动画静态底图）；否则存当前画布（剥掉洋葱皮幽灵）
+      const els = animOpen
+        ? baseElementsRef.current
+        : stripOnionElements(api.getSceneElements() as ExcalidrawElement[]);
+      const json = serializeAsJSON(els, api.getAppState(), api.getFiles(), "local");
       savePageScene(notebookStateRef.current.activePageId, json);
-      // 记住这一页停在哪个帧，下次切回来还停在同一帧
-      saveTrack(notebookStateRef.current.activePageId, {
-        ...animTrackRef.current,
-        lastFrameId: currentFrameIdRef.current,
-      });
+      if (animOpen) {
+        // 基准场景跟着当前画布内容走，避免切页丢动画基准
+        saveBaseScene(notebookStateRef.current.activePageId, json);
+      }
     } catch {
       /* 忽略写入错误 */
     }
-  }, [currentFrameElements]);
+  }, [animOpen]);
 
   /** 把某一页的场景灌进画布（只管加载，不碰索引状态） */
   const loadPageById = useCallback(
@@ -1036,15 +1024,26 @@ export default function App() {
       api.refresh();
       if (title) document.title = `${title} – Painter 画板`;
 
-      // 动画跟着页走：换页即换整条帧序列。
-      // 页面内容就是这一页上次停留的那一帧，直接写进它的快照，两者始终一致。
-      const track = loadTrack(pageId);
-      animTrackRef.current = track;
-      setAnimTrack(track);
-      const frameId = track.lastFrameId;
-      currentFrameIdRef.current = frameId;
-      setCurrentFrameId(frameId);
-      saveFrameScene(frameId, { elements, files: scene?.files ?? {} });
+      // 动画工程跟着页走：换页即换整份关键帧工程 + 基准场景
+      const p = loadProject(pageId);
+      animProjectRef.current = p;
+      setAnimProject(p);
+      const baseJson = loadBaseScene(pageId);
+      if (baseJson) {
+        try {
+          const parsed = JSON.parse(baseJson) as { elements?: ExcalidrawElement[] };
+          baseElementsRef.current = parsed.elements ?? elements;
+        } catch {
+          baseElementsRef.current = elements;
+        }
+      } else {
+        baseElementsRef.current = elements;
+      }
+      setPlayheadT(0);
+      playheadRef.current = 0;
+      setSelectedElementId(null);
+      selectedElementIdRef.current = null;
+      lastShownPropsRef.current = new Map();
       setSceneVersion((v) => v + 1);
     },
     [],
@@ -1172,8 +1171,8 @@ export default function App() {
       const target = notebook.pages.find((p) => p.id === pageId);
       if (!target) return;
       deletePageScene(pageId);
-      // 这一页的帧序列一并清掉，不留孤儿快照
-      deleteTrack(pageId);
+      // 这一页的动画工程一并清掉，不留孤儿数据
+      deleteProject(pageId);
       const pages = notebook.pages.filter((p) => p.id !== pageId);
       const notebooks = current.notebooks.map((nb) =>
         nb.id === notebook.id ? { ...nb, pages, updatedAt: Date.now() } : nb,
@@ -2082,22 +2081,7 @@ export default function App() {
           // 收到 value 后回写到 themeMode，由 realTheme 派生给 Excalidraw.theme。
           onThemeChange={(value) => setThemeMode(value as ThemeMode)}
           langCode={langCode}
-          UIOptions={{
-            canvasActions: {
-              loadScene: false,
-              saveToActiveFile: false,
-              export: { saveFileToDisk: true },
-              // 必须 true：让库注册 actionToggleTheme（含 Alt+Shift+D 快捷键），
-              // MainMenu.DefaultItems.ToggleTheme 内部会检查 isActionEnabled，
-              // 不注册直接返回 null 看不见。实际行为通过 onThemeChange 接管，
-              // 不会改 Excalidraw 自带的 appState.theme。
-              toggleTheme: true,
-            },
-            tools: {
-              // 图片工具默认已启用,无需额外配置
-              image: true,
-            },
-          }}
+          UIOptions={EXCALIDRAW_UI_OPTIONS}
         >
           {/* 自定义 MainMenu：传 children 后 Excalidraw 会自动隐藏 DefaultMainMenu
               （fallback 版的 preferHost 机制，见 index.js:29679-29686）。
@@ -2154,23 +2138,35 @@ export default function App() {
       {/* 动画时间轴：.app 的 flex 子项，横跨底部，画布自动让位 */}
       {animOpen && (
         <AnimationTimeline
-          track={animTrack}
-          currentFrameId={currentFrameId}
-          sceneVersion={sceneVersion}
+          project={animProject}
+          playheadT={playheadT}
           playing={animPlaying}
+          fps={animProject.fps}
+          durationSec={animProject.durationSec}
+          onion={onion}
+          elementName={(id) => {
+            const els =
+              (excalidrawAPI?.getSceneElements() as ExcalidrawElement[] | undefined) ??
+              baseElementsRef.current;
+            const el = els.find((e) => e.id === id);
+            const label =
+              (el as { name?: string } | undefined)?.name || el?.type || "元素";
+            return label;
+          }}
+          selectedElementId={selectedElementId}
           files={animFiles}
-          loadFrameElements={loadFrameElementsById}
-          onSelectFrame={gotoFrame}
-          onAddFrame={handleAddFrame}
-          onDuplicateFrame={handleDuplicateFrame}
-          onDeleteFrame={handleDeleteFrame}
-          onMoveFrame={handleMoveFrame}
-          onHoldChange={handleHoldChange}
+          baseElements={baseElementsRef.current}
+          onAddKeyframe={handleAddKeyframe}
+          onSelectTrack={handleSelectTrack}
+          onDeleteKeyframe={handleDeleteKeyframe}
+          onMoveKeyframe={handleMoveKeyframe}
+          onSetEasing={handleSetEasing}
+          onDeleteTrack={handleDeleteTrack}
           onFpsChange={handleFpsChange}
+          onDurationChange={handleDurationChange}
           onOnionChange={handleOnionChange}
+          onPlayheadChange={handlePlayheadChange}
           onPlayToggle={handleTogglePlay}
-          onPrevFrame={() => stepFrame(-1)}
-          onNextFrame={() => stepFrame(1)}
           onExportGif={handleExportGif}
           exporting={exporting}
           exportProgress={exportProgress}

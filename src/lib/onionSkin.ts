@@ -14,7 +14,17 @@
 // 跨帧引用另一帧的元素会指向不存在的 id，留着只会渲染错乱。
 
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import type { OnionConfig } from "./animation";
+
+/** 洋葱皮配置（本地定义，避免依赖旧的 animation.ts） */
+export interface OnionConfig {
+  enabled: boolean;
+  /** 向前显示几帧 */
+  before: number;
+  /** 向后显示几帧 */
+  after: number;
+  /** 基准不透明度 0-100 */
+  opacity: number;
+}
 
 export const ONION_PREFIX = "painter-onion:";
 
