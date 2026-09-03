@@ -5,7 +5,7 @@
 // - 右侧：时间标尺 + 可拖动播放头 + 每轨关键帧菱形（拖动改时间、点选改缓动、删除）
 // - 选中画布元素后，在播放头处「添加关键帧」即记录该元素当前属性
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import {
@@ -17,6 +17,46 @@ import type { OnionConfig } from "../lib/onionSkin";
 import "./AnimationTimeline.css";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+// 统一线性风格图标（仿 Excalidraw 原生细描边 / currentColor / 24×24 viewBox）
+type IconName = "play" | "pause" | "chevron-up" | "chevron-down" | "close";
+
+const ICON_PATHS: Record<IconName, ReactNode> = {
+  play: <polygon points="6 4 20 12 6 20" />,
+  pause: (
+    <>
+      <rect x="6" y="5" width="4" height="14" rx="1.2" />
+      <rect x="14" y="5" width="4" height="14" rx="1.2" />
+    </>
+  ),
+  "chevron-up": <polyline points="6 14 12 8 18 14" />,
+  "chevron-down": <polyline points="6 10 12 16 18 10" />,
+  close: (
+    <>
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </>
+  ),
+};
+
+function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
+  const filled = name === "play" || name === "pause";
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke={filled ? "none" : "currentColor"}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {ICON_PATHS[name]}
+    </svg>
+  );
+}
 
 export interface AnimationTimelineProps {
   project: AnimProject;
@@ -140,7 +180,7 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
     <div className="anim-timeline">
       <div className="anim-header">
         <button className="anim-play" onClick={onPlayToggle} title="播放/停止（空格）">
-          {playing ? "❚❚" : "▶"}
+          <Icon name={playing ? "pause" : "play"} />
         </button>
         <div className="anim-playmode" role="group" aria-label="播放模式">
           <button
@@ -199,10 +239,10 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
           aria-label={collapsed ? "展开详情" : "收起详情"}
           aria-expanded={!collapsed}
         >
-          {collapsed ? "▾" : "▴"}
+          <Icon name={collapsed ? "chevron-down" : "chevron-up"} />
         </button>
         <button className="anim-btn ghost" onClick={onClose} title="关闭">
-          ✕
+          <Icon name="close" />
         </button>
       </div>
 
@@ -298,7 +338,7 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
                   onDeleteTrack(tr.elementId);
                 }}
               >
-                ✕
+                <Icon name="close" size={14} />
               </button>
             </div>
           ))}

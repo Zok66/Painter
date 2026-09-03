@@ -106,6 +106,10 @@
 }
 
 .anim-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   padding: 5px 10px;
   border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
   border-radius: var(--border-radius-md, 8px);
@@ -113,6 +117,11 @@
   cursor: pointer;
   font-size: 13px;
   color: var(--color-text-primary, #1a1a1a);
+}
+
+.anim-timeline svg {
+  display: block;
+  flex: none;
 }
 
 .anim-btn:hover {
@@ -213,6 +222,9 @@
 }
 
 .anim-track-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: none;
   color: var(--color-text-tertiary, #999);
