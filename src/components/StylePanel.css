@@ -473,9 +473,24 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+.text-format-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.text-format-label {
+  flex: 0 0 auto;
+  width: 3.5rem;
+  font-size: 0.8125rem;
+  line-height: 1;
+  color: var(--color-on-surface);
+  user-select: none;
+  box-sizing: border-box;
+}
 .text-format-number {
   display: flex;
   align-items: center;
+  flex: 1;
   box-sizing: border-box;
   height: 2rem;
   border: 1px solid var(--default-border-color);

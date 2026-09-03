@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { TextDirection, TextVerticalAlign } from "../lib/textFormat";
 
 export interface TextFormatValue {
@@ -118,6 +118,7 @@ function NumericField({
   onChange,
 }: NumericFieldProps) {
   const [draft, setDraft] = useState<string | null>(null);
+  const inputId = useId();
 
   const commit = (raw: string) => {
     const n = parseFloat(raw);
@@ -137,10 +138,13 @@ function NumericField({
   };
 
   return (
-    <fieldset>
-      <legend>{label}</legend>
+    <div className="text-format-row">
+      <label className="text-format-label" htmlFor={inputId}>
+        {label}
+      </label>
       <div className="text-format-number">
         <input
+          id={inputId}
           type="number"
           inputMode="decimal"
           min={min}
@@ -175,7 +179,7 @@ function NumericField({
           </button>
         </div>
       </div>
-    </fieldset>
+    </div>
   );
 }
 
