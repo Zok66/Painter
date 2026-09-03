@@ -1720,6 +1720,9 @@ export default function App() {
   );
 
   // —— 翻转 / 镜像 ——
+  // 几何正确的镜像：围绕选中区域的公共中心做反射。
+  // - 线性元素（line / freedraw / arrow）带 points 数组，需逐点镜像并修正旋转角
+  // - 普通元素镜像包围盒中心，并将 angle 取反（镜像会反转旋转方向）
   const flipSelectedElements = useCallback(
     (direction: "horizontal" | "vertical") => {
       const api = excalidrawAPIRef.current;
@@ -1730,49 +1733,131 @@ export default function App() {
       const selectedIds = Object.keys(appState.selectedElementIds || {});
       if (selectedIds.length === 0) return;
 
-      // 找到所有选中的元素
-      const selected = elements.filter((el) =>
-        selectedIds.includes(el.id) && !el.isDeleted,
-      );
+      const isSelected = (el: ExcalidrawElement) =>
+        selectedIds.includes(el.id) && !el.isDeleted;
+      const selected = elements.filter(isSelected);
       if (selected.length === 0) return;
 
-      // 计算选中区域的公共包围盒中心
+      // 选中元素的「实际渲染包围盒」中心（线性元素用 points 计算）
+      const boundsOf = (el: any) => {
+        if (Array.isArray(el.points) && el.points.length) {
+          let lx = Infinity, ly = Infinity, hx = -Infinity, hy = -Infinity;
+          for (const p of el.points) {
+            const ax = el.x + p[0];
+            const ay = el.y + p[1];
+            if (ax < lx) lx = ax;
+            if (ay < ly) ly = ay;
+            if (ax > hx) hx = ax;
+            if (ay > hy) hy = ay;
+          }
+          return { lx, ly, hx, hy };
+        }
+        return { lx: el.x, ly: el.y, hx: el.x + el.width, hy: el.y + el.height };
+      };
+
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const el of selected) {
-        minX = Math.min(minX, el.x);
-        minY = Math.min(minY, el.y);
-        maxX = Math.max(maxX, el.x + el.width);
-        maxY = Math.max(maxY, el.y + el.height);
+        const b = boundsOf(el);
+        if (b.lx < minX) minX = b.lx;
+        if (b.ly < minY) minY = b.ly;
+        if (b.hx > maxX) maxX = b.hx;
+        if (b.hy > maxY) maxY = b.hy;
       }
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
 
-      // 对每个选中元素执行翻转
-      const updatedElements = elements.map((el) => {
-        if (!selectedIds.includes(el.id) || el.isDeleted) return el;
-        if (direction === "horizontal") {
-          // 水平翻转：围绕中心X轴镜像
-          const newCenterX = centerX + (centerX - (el.x + el.width / 2));
-          return {
-            ...el,
-            x: newCenterX - el.width / 2,
-            version: el.version + 1,
-            versionNonce: Math.floor(Math.random() * 999999999),
-          };
+      const rotate = (px: number, py: number, a: number): [number, number] => {
+        const c = Math.cos(a), s = Math.sin(a);
+        return [px * c - py * s, px * s + py * c];
+      };
+
+      const next = elements.map((el) => {
+        if (!isSelected(el)) return el;
+        const cloned: any = { ...el };
+        const angle = (el as any).angle ?? 0;
+
+        if (Array.isArray((el as any).points) && (el as any).points.length) {
+          // —— 线性元素：在渲染空间逐点镜像，再反算回本地 points ——
+          const pts = (el as any).points as [number, number][];
+          // 本地几何中心
+          let lMinX = Infinity, lMinY = Infinity, lMaxX = -Infinity, lMaxY = -Infinity;
+          for (const p of pts) {
+            if (p[0] < lMinX) lMinX = p[0];
+            if (p[1] < lMinY) lMinY = p[1];
+            if (p[0] > lMaxX) lMaxX = p[0];
+            if (p[1] > lMaxY) lMaxY = p[1];
+          }
+          const locCx = (lMinX + lMaxX) / 2;
+          const locCy = (lMinY + lMaxY) / 2;
+          // 渲染空间中心
+          const renCx = el.x + locCx;
+          const renCy = el.y + locCy;
+          const newAngle = -angle;
+          const newRenCx = 2 * cx - renCx;
+          const newRenCy = 2 * cy - renCy;
+
+          const newLocal: [number, number][] = pts.map((p) => {
+            // 本地点 → 相对本地中心
+            const dx = p[0] - locCx;
+            const dy = p[1] - locCy;
+            // 旋转到渲染空间
+            const [rx, ry] = rotate(dx, dy, angle);
+            // 渲染空间绝对坐标
+            const ax = renCx + rx;
+            const ay = renCy + ry;
+            // 围绕公共中心镜像
+            const mx = direction === "horizontal" ? 2 * cx - ax : ax;
+            const my = direction === "vertical" ? 2 * cy - ay : ay;
+            // 反旋转回新本地空间（相对新本地中心）
+            const [nx, ny] = rotate(mx - newRenCx, my - newRenCy, -newAngle);
+            return [nx + locCx, ny + locCy] as [number, number];
+          });
+
+          const newElX = newRenCx - rotate(locCx, locCy, newAngle)[0];
+          const newElY = newRenCy - rotate(locCx, locCy, newAngle)[1];
+
+          let nMinX = Infinity, nMinY = Infinity, nMaxX = -Infinity, nMaxY = -Infinity;
+          for (const p of newLocal) {
+            if (p[0] < nMinX) nMinX = p[0];
+            if (p[1] < nMinY) nMinY = p[1];
+            if (p[0] > nMaxX) nMaxX = p[0];
+            if (p[1] > nMaxY) nMaxY = p[1];
+          }
+          cloned.points = newLocal.map(
+            (p) => [p[0] - nMinX, p[1] - nMinY] as [number, number],
+          );
+          cloned.x = newElX + nMinX;
+          cloned.y = newElY + nMinY;
+          cloned.width = nMaxX - nMinX;
+          cloned.height = nMaxY - nMinY;
+          cloned.angle = newAngle;
+
+          // 箭头翻转后方向反转：交换两端箭头
+          if ((el as any).type === "arrow") {
+            cloned.startArrowhead = (el as any).endArrowhead;
+            cloned.endArrowhead = (el as any).startArrowhead;
+          }
         } else {
-          // 垂直翻转：围绕中心Y轴镜像
-          const newCenterY = centerY + (centerY - (el.y + el.height / 2));
-          return {
-            ...el,
-            y: newCenterY - el.height / 2,
-            version: el.version + 1,
-            versionNonce: Math.floor(Math.random() * 999999999),
-          };
+          // —— 普通元素：镜像包围盒中心，取反 angle ——
+          const w = el.width;
+          const h = el.height;
+          if (direction === "horizontal") {
+            const centerX = el.x + w / 2;
+            cloned.x = 2 * cx - centerX - w / 2;
+          } else {
+            const centerY = el.y + h / 2;
+            cloned.y = 2 * cy - centerY - h / 2;
+          }
+          cloned.angle = -angle;
         }
+
+        cloned.version = el.version + 1;
+        cloned.versionNonce = Math.floor(Math.random() * 1e9);
+        return cloned;
       });
 
       api.updateScene({
-        elements: updatedElements,
+        elements: next,
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,
       });
     },
