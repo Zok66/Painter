@@ -542,6 +542,54 @@ function patchTextFormatting(): Plugin {
   }
 }
 
+/**
+ * 原生选中面板「操作」行注入翻转 / 镜像按钮。
+ *
+ * actionFlipHorizontal / actionFlipVertical 已在 actionManager 注册
+ * （快捷键 Shift+H / Shift+V 就是它们），只是原生没把按钮渲染进左侧
+ * 面板。这里在「操作」行 buttonList 的复制按钮之前插入
+ * renderAction("flipHorizontal") / renderAction("flipVertical")，
+ * 完全复用原生翻转逻辑（绑定文字、箭头、frame 成员等边界情况由原生处理）。
+ */
+function patchFlipActions(): Plugin {
+  return {
+    name: "painter-patch-flip-actions",
+    transform(code, id) {
+      if (!id.includes("@excalidraw/excalidraw/dist/")) return null;
+      if (code.includes("__painterFlipActions")) return null;
+
+      // dev（未压缩）：左侧面板操作行 = duplicate 紧跟 delete（该组合唯一，
+      // 悬浮工具条 / compact 行的形态不同，不会误伤）
+      const devAnchor =
+        'renderAction("duplicateSelection"),\n        renderAction("deleteSelectedElements"),';
+      if (code.includes(devAnchor)) {
+        const injected =
+          '/* __painterFlipActions */\n        renderAction("flipHorizontal"),\n        renderAction("flipVertical"),\n        ';
+        return code.replace(
+          devAnchor,
+          injected + devAnchor,
+        );
+      }
+
+      // prod（压缩）：children:[n("duplicateSelection"),n("deleteSelectedElements")
+      // n 是压缩后的 renderAction 形参名，每次 npm install 可能变化，用反向引用匹配。
+      const prodRe =
+        /children:\[([A-Za-z$_][\w$]*)\("duplicateSelection"\),\1\("deleteSelectedElements"\)/;
+      const m = code.match(prodRe);
+      if (m) {
+        const fn = m[1];
+        return code.replace(
+          prodRe,
+          `children:[/*__painterFlipActions*/${fn}("flipHorizontal"),${fn}("flipVertical"),${fn}("duplicateSelection"),${fn}("deleteSelectedElements")`,
+        );
+      }
+
+      console.warn("[flip-actions] 锚点未找到，跳过：", id);
+      return null;
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -550,6 +598,7 @@ export default defineConfig({
     patchPaperTexture(),
     patchNativeColorPicker(),
     patchTextFormatting(),
+    patchFlipActions(),
   ],
   // Electron 用 file:// 协议加载本地资源,必须用相对路径
   base: './',

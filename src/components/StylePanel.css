@@ -588,35 +588,3 @@
   color: var(--color-on-primary-container);
   background: var(--color-surface-primary-container);
 }
-
-/* —— 翻转 / 镜像按钮 —— */
-.flip-btn {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 0;
-  width: var(--default-button-size);
-  height: var(--default-button-size);
-  box-sizing: border-box;
-  border: 1px solid var(--default-border-color);
-  border-radius: var(--border-radius-lg);
-  cursor: pointer;
-  background: var(--island-bg-color);
-  color: var(--color-on-surface);
-}
-.flip-btn:hover {
-  background: var(--color-surface-high);
-  border-color: var(--default-border-color);
-  color: var(--color-on-surface);
-}
-.flip-btn:active {
-  background: var(--color-surface-primary-container);
-  border-color: var(--color-surface-primary-container);
-}
-.flip-btn:active svg {
-  color: var(--color-on-primary-container);
-}
-.flip-btn svg {
-  width: var(--default-icon-size);
-  height: var(--default-icon-size);
-}
