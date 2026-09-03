@@ -101,7 +101,7 @@ const PAPER_MARKER = "__painterPaperRender";
  *
  * 钩子打在 _renderStaticScene 里 ctx.scale(zoom) 之后、原生 strokeGrid 之前。
  * 这个位置让纹理落在背景层：元素盖在它上面，原生网格（若开启）又盖在它下面一层，
- * 且导出走的是同一条渲染路径，所以导出的 PNG / SVG 自带纹理。
+ * 且导出 PNG / SVG 自带纹理。
  *
  * dev（未压缩）与 prod（压缩）两种产物形态不同，分别用各自的锚点；
  * 两边都匹配不上时原样返回，最坏情况只是没有纹理，不会破坏渲染。
@@ -192,6 +192,279 @@ function patchNativeColorPicker(): Plugin {
   };
 }
 
+/**
+ * 文字格式化补丁（方向 / 行距 / 字距 / 文字框独立高度 / 垂直对齐）。
+ *
+ * 与上面几个补丁一样，在 vite 转换 @excalidraw 源码时**内存注入**，
+ * 不写 node_modules（本机安全软件对 node_modules/@excalidraw 的 dist 文件加了写锁，
+ * 无法原地改；用 transform 注入则完全绕开）。锚点与 scripts/patch-excalidraw.mjs
+ * 一一对应；marker 用于幂等保护——已注入则跳过，避免 HMR / 重复转换时二次注入。
+ *
+ * 匹配按「包名（element / excalidraw）」而非具体文件名：因为生产构建会把
+ * @excalidraw 拆成若干 chunk（index.js / chunk-*.js），文件名不固定；
+ * 只要锚点命中即注入，对拆包免疫。颗粒渲染 / 纸张纹理 / 原生取色器由上面三个
+ * 插件负责，本插件只处理文字相关。
+ */
+type TextPatch = {
+  /** 目标包：element 或 excalidraw（按包名匹配，对 chunk 拆包免疫） */
+  pkg: "element" | "excalidraw";
+  anchor: string;
+  marker: string;
+  /** replace=true 时整段替换锚点（用于 const→let 等需要改声明的场景），否则在锚点后插入 */
+  replace?: boolean;
+  after: string;
+};
+
+const TEXT_PATCHES: TextPatch[] = [
+  // —— 横排 + 字距：原生文字分支注入 context.letterSpacing（dev） ——
+  {
+    pkg: "element",
+    anchor: '        context.textAlign = element.textAlign;',
+    marker: "__painterLetterSpacing",
+    after:
+      '        context.textAlign = element.textAlign;\n        /* __painterLetterSpacing */\n        if (element.customData && element.customData.letterSpacing) { context.letterSpacing = `${element.customData.letterSpacing}px`; }\n',
+  },
+  // —— 竖排：原生文字分支开头路由到自研钩子（dev） ——
+  {
+    pkg: "element",
+    anchor: '        context.canvas.setAttribute("dir", rtl ? "rtl" : "ltr");',
+    marker: "window.__painterTextRender",
+    after:
+      '\n' +
+      '        if (element.customData && element.customData.textDirection === "vertical") {\n' +
+      '          if (typeof window !== "undefined" && window.__painterTextRender) {\n' +
+      '            window.__painterTextRender(element, context, renderConfig, { rtl });\n' +
+      '            break;\n' +
+      '          }\n' +
+      '        }\n',
+  },
+  // —— 包围盒：redrawTextBoundingBox 尺寸改由自研函数计算（dev，需把 const 改为 let） ——
+  {
+    pkg: "element",
+    anchor:
+      "  const metrics = measureText(\n    boundTextUpdates.text,\n    getFontString2(textElement),\n    textElement.lineHeight\n  );",
+    marker: "window.__painterMeasureText",
+    replace: true,
+    after:
+      "  let metrics = measureText(\n    boundTextUpdates.text,\n    getFontString2(textElement),\n    textElement.lineHeight\n  );\n" +
+      "  if (textElement.customData && (textElement.customData.textDirection === \"vertical\" || (textElement.customData.letterSpacing && textElement.customData.letterSpacing !== 0))) {\n" +
+      "    if (typeof window !== \"undefined\" && window.__painterMeasureText) {\n" +
+      "      metrics = window.__painterMeasureText(textElement);\n" +
+      "    }\n" +
+      "  }\n",
+  },
+  // —— 文字框：上下中间手柄改道为设置框高度（dev） ——
+  {
+    pkg: "element",
+    anchor:
+      "var resizeSingleTextElement = (origElement, element, scene, transformHandleType, shouldResizeFromCenter, nextWidth, nextHeight) => {",
+    marker: "__painterFixedHeightResize",
+    after:
+      "\n" +
+      "  /* __painterFixedHeightResize 上下中间手柄 → 改框高度，不改字号 */\n" +
+      "  if (transformHandleType === \"n\" || transformHandleType === \"s\") {\n" +
+      "    const painterNat = typeof window !== \"undefined\" && window.__painterMeasureText ? window.__painterMeasureText(element) : null;\n" +
+      "    const painterNatH = painterNat && typeof painterNat.height === \"number\" ? painterNat.height : element.height;\n" +
+      "    const painterH = nextHeight < painterNatH ? painterNatH : nextHeight;\n" +
+      "    const painterOrigin = pointFrom17(origElement.x, origElement.y);\n" +
+      "    const painterNext = getResizedOrigin(\n" +
+      "      painterOrigin,\n" +
+      "      origElement.width,\n" +
+      "      origElement.height,\n" +
+      "      element.width,\n" +
+      "      painterH,\n" +
+      "      origElement.angle,\n" +
+      "      transformHandleType,\n" +
+      "      false,\n" +
+      "      shouldResizeFromCenter\n" +
+      "    );\n" +
+      "    scene.mutateElement(element, {\n" +
+      "      height: painterH,\n" +
+      "      x: painterNext.x,\n" +
+      "      y: painterNext.y,\n" +
+      "      customData: { ...(element.customData || {}), fixedHeight: painterH }\n" +
+      "    });\n" +
+      "    return;\n" +
+      "  }\n",
+  },
+  // —— 包围盒：height 不再无条件等于测量高度，用户拉过的高度优先（dev，replace） ——
+  {
+    pkg: "element",
+    anchor:
+      "  if (textElement.autoResize) {\n    boundTextUpdates.width = metrics.width;\n  }\n  boundTextUpdates.height = metrics.height;",
+    marker: "__painterFixedHeightKeep",
+    replace: true,
+    after:
+      "  if (textElement.autoResize) {\n    boundTextUpdates.width = metrics.width;\n  }\n" +
+      "  boundTextUpdates.height = metrics.height;\n" +
+      "  /* __painterFixedHeightKeep 用户设定的框高度优先，但不小于内容高度以免裁切 */\n" +
+      "  {\n" +
+      "    const painterFixed = textElement.customData && textElement.customData.fixedHeight;\n" +
+      "    if (typeof painterFixed === \"number\" && painterFixed > boundTextUpdates.height) {\n" +
+      "      boundTextUpdates.height = painterFixed;\n" +
+      "    }\n" +
+      "  }\n",
+  },
+  // —— 渲染：框高于内容时，整块文字按 verticalAlign 下移（dev，replace） ——
+  {
+    pkg: "element",
+    anchor:
+      "        const verticalOffset = getVerticalOffset(\n          element.fontFamily,\n          element.fontSize,\n          lineHeightPx\n        );\n" +
+      "        for (let index = 0; index < lines.length; index++) {\n" +
+      "          context.fillText(\n" +
+      "            lines[index],\n" +
+      "            horizontalOffset,\n" +
+      "            index * lineHeightPx + verticalOffset\n" +
+      "          );\n" +
+      "        }",
+    marker: "__painterVerticalAlign",
+    replace: true,
+    after:
+      "        const verticalOffset = getVerticalOffset(\n          element.fontFamily,\n          element.fontSize,\n          lineHeightPx\n        );\n" +
+      "        /* __painterVerticalAlign 框高于内容时按 verticalAlign 下移整块文字 */\n" +
+      "        let painterPadTop = 0;\n" +
+      "        {\n" +
+      "          const painterContentH = lines.length * lineHeightPx;\n" +
+      "          const painterFree = element.height - painterContentH;\n" +
+      "          if (painterFree > 0) {\n" +
+      "            const painterVA = element.customData && element.customData.verticalAlign;\n" +
+      "            painterPadTop = painterVA === \"bottom\" ? painterFree : painterVA === \"middle\" ? painterFree / 2 : 0;\n" +
+      "          }\n" +
+      "        }\n" +
+      "        for (let index = 0; index < lines.length; index++) {\n" +
+      "          context.fillText(\n" +
+      "            lines[index],\n" +
+      "            horizontalOffset,\n" +
+      "            index * lineHeightPx + verticalOffset + painterPadTop\n" +
+      "          );\n" +
+      "        }",
+  },
+
+  // ===== 以上 dev 的 prod（压缩）对应形态 =====
+  {
+    pkg: "element",
+    anchor:
+      'n.font=Ch(e),n.fillStyle=pr(e.strokeColor,i.theme===Mi.DARK),n.textAlign=e.textAlign;',
+    marker: "__painterLetterSpacing",
+    after:
+      'n.font=Ch(e),n.fillStyle=pr(e.strokeColor,i.theme===Mi.DARK),n.textAlign=e.textAlign;/* __painterLetterSpacing */e.customData&&e.customData.letterSpacing&&(n.letterSpacing=e.customData.letterSpacing+"px");',
+  },
+  {
+    pkg: "element",
+    anchor: 'n.canvas.setAttribute("dir",o?"rtl":"ltr"),',
+    marker: "window.__painterTextRender",
+    // 该锚点尾随逗号（处于逗号表达式链中），直接插入 if 语句会 PARSE_ERROR；
+    // 整段替换并把尾随逗号改为分号，使 setAttribute 成为独立语句，if 才合法。
+    replace: true,
+    after:
+      'n.canvas.setAttribute("dir",o?"rtl":"ltr");if(e.customData&&e.customData.textDirection==="vertical"){window.__painterTextRender&&window.__painterTextRender(e,n,i,{rtl:o});break}',
+  },
+  {
+    pkg: "element",
+    anchor: "let s=ft(r.text,Wo(e),e.lineHeight);",
+    marker: "window.__painterMeasureText",
+    replace: true,
+    after:
+      'let s=ft(r.text,Wo(e),e.lineHeight);if(e.customData&&(e.customData.textDirection==="vertical"||e.customData.letterSpacing&&e.customData.letterSpacing!==0)){let m=window.__painterMeasureText&&window.__painterMeasureText(e);m&&(s=m)}',
+  },
+  // resize：当前 prod 压缩签名为 Yx=(e,t,n,i,o,r,s,a)=>{，形参
+  // e=origElement t=element n=scene i=handle o=fromCenter r=nextWidth s=nextHeight（a=zoom 未用）。
+  // 注意：prod 压缩名每次 npm install 可能变化，本锚点若失效构建会告警并跳过（dev 不受影响）。
+  {
+    pkg: "element",
+    anchor: "Yx=(e,t,n,i,o,r,s,a)=>{",
+    marker: "__painterFixedHeightResize",
+    after:
+      '/*__painterFixedHeightResize*/if(i==="n"||i==="s"){let _pNat=typeof window!=="undefined"&&window.__painterMeasureText?window.__painterMeasureText(t):null,_pNatH=_pNat&&typeof _pNat.height==="number"?_pNat.height:t.height,_pH=s<_pNatH?_pNatH:s,_pO=me(e.x,e.y),_pNext=va(_pO,e.width,e.height,t.width,_pH,e.angle,i,!1,o);n.mutateElement(t,{height:_pH,x:_pNext.x,y:_pNext.y,customData:{...(t.customData||{}),fixedHeight:_pH}});return}',
+  },
+  {
+    pkg: "element",
+    // 注意：r.height=s.height 在 if 条件的逗号表达式里已执行，且块体仅在有绑定容器(t)时
+    // 才跑——注入必须放在整条 if 之前、直接抬高 s.height，让随后的 r.height=s.height 自然带上。
+    anchor: "if(e.autoResize&&(r.width=s.width),r.height=s.height,t){",
+    marker: "__painterFixedHeightKeep",
+    replace: true,
+    after:
+      'if(e.customData&&typeof e.customData.fixedHeight==="number"&&e.customData.fixedHeight>s.height)s.height=e.customData.fixedHeight;/*__painterFixedHeightKeep*/if(e.autoResize&&(r.width=s.width),r.height=s.height,t){',
+  },
+  {
+    pkg: "element",
+    anchor:
+      "d=kh(e.fontFamily,e.fontSize,l);for(let c=0;c<s.length;c++)n.fillText(s[c],a,c*l+d);",
+    marker: "__painterVerticalAlign",
+    replace: true,
+    after:
+      "d=kh(e.fontFamily,e.fontSize,l);/*__painterVerticalAlign*/let _pPad=0;{let _pCH=s.length*l,_pFree=e.height-_pCH;if(_pFree>0){let _pVA=e.customData&&e.customData.verticalAlign;_pPad=_pVA===\"bottom\"?_pFree:_pVA===\"middle\"?_pFree/2:0}}for(let c=0;c<s.length;c++)n.fillText(s[c],a,c*l+d+_pPad);",
+  },
+
+  // —— 编辑态（wysiwyg textarea）：与渲染态对齐——垂直对齐 + 行距 + 字距（dev） ——
+  {
+    pkg: "excalidraw",
+    anchor:
+      "        opacity: updatedTextElement.opacity / 100,\n        maxHeight: `${editorMaxHeight}px`\n      });",
+    marker: "__painterVerticalAlignEdit",
+    after:
+      "\n      /* __painterVerticalAlignEdit 编辑态文字与渲染态对齐：垂直对齐 + 行距 + 字距 */\n" +
+      "      {\n" +
+      "        const _pEl = updatedTextElement;\n" +
+      "        /* 行距：原生编辑态 textarea 未显式设置 line-height，需同步 element.lineHeight，否则编辑态回落到 normal */\n" +
+      "        editable.style.lineHeight = String(_pEl.lineHeight);\n" +
+      "        /* 字距：customData.letterSpacing 是 Painter 扩展，原生 textarea 不识别，需手动映射 */\n" +
+      "        const _pLS = _pEl.customData && _pEl.customData.letterSpacing;\n" +
+      "        if (_pLS) { editable.style.letterSpacing = `${_pLS}px`; }\n" +
+      "        const _pLh = _pEl.fontSize * _pEl.lineHeight;\n" +
+      "        const _pContentH = _pEl.text.replace(/\\r\\n?/g, \"\\n\").split(\"\\n\").length * _pLh;\n" +
+      "        const _pFree = _pEl.height - _pContentH;\n" +
+      "        if (_pFree > 0) {\n" +
+      "          const _pVA = _pEl.customData && _pEl.customData.verticalAlign;\n" +
+      "          const _pPad = _pVA === \"bottom\" ? _pFree : _pVA === \"middle\" ? _pFree / 2 : 0;\n" +
+      "          if (_pPad > 0) {\n" +
+      "            editable.style.paddingTop = `${_pPad}px`;\n" +
+      "          }\n" +
+      "        }\n" +
+      "      }\n",
+  },
+  {
+    // 注意：原 Object.assign 之后紧跟 `,c={...}` 逗号表达式链，在其后插语句会
+    // PARSE_ERROR。锚定它前面的 `;`，把代码块插在 Object.assign 之前（语句间隙）。
+    pkg: "excalidraw",
+    anchor: "ight-Qr)/N.zoom.value;",
+    marker: "__painterVerticalAlignEdit",
+    after:
+      "/*__painterVerticalAlignEdit*/{let _pLh=H.fontSize*H.lineHeight;u.style.lineHeight=String(H.lineHeight);let _pLS=H.customData&&H.customData.letterSpacing;_pLS&&(u.style.letterSpacing=`${_pLS}px`);let _pCH=H.text.replace(/\\r\\n?/g,`\n`).split(`\n`).length*_pLh,_pFr=H.height-_pCH;if(_pFr>0){let _pVA=H.customData&&H.customData.verticalAlign,_pPd=_pVA===\"bottom\"?_pFr:_pVA===\"middle\"?_pFr/2:0;_pPd>0&&(u.style.paddingTop=`${_pPd}px`)}};",
+  },
+];
+
+function patchTextFormatting(): Plugin {
+  return {
+    name: "painter-patch-text-formatting",
+    transform(code, id) {
+      const isElement = id.includes("@excalidraw/element/dist/")
+      const isExcalidraw = id.includes("@excalidraw/excalidraw/dist/")
+      if (!isElement && !isExcalidraw) return null
+      let out = code
+      let changed = false
+      for (const p of TEXT_PATCHES) {
+        if (p.pkg === "element" && !isElement) continue
+        if (p.pkg === "excalidraw" && !isExcalidraw) continue
+        if (out.includes(p.marker)) continue
+        const at = out.indexOf(p.anchor)
+        if (at < 0) {
+          console.warn(`[text-format] 锚点未找到，跳过：${id} (${p.marker})`)
+          continue
+        }
+        if (p.replace) {
+          out = out.replace(p.anchor, p.after)
+        } else {
+          out = out.slice(0, at + p.anchor.length) + p.after + out.slice(at + p.anchor.length)
+        }
+        changed = true
+      }
+      return changed ? out : null
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -199,6 +472,7 @@ export default defineConfig({
     patchExcalidrawRender(),
     patchPaperTexture(),
     patchNativeColorPicker(),
+    patchTextFormatting(),
   ],
   // Electron 用 file:// 协议加载本地资源,必须用相对路径
   base: './',
@@ -217,8 +491,8 @@ export default defineConfig({
     ],
     include: [
       'png-chunks-extract',
-      'png-chunk-text',
       'png-chunks-encode',
+      'png-chunk-text',
       'lodash.throttle',
       'lodash.debounce',
       // zustand v4(Excalidraw 依赖)是 CJS,被排除预构建的 @excalidraw/* 链路

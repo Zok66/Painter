@@ -8,8 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:fill": "node scripts/run_fill_tests.mjs",
-    "postinstall": "node scripts/patch-excalidraw.mjs"
+    "test:fill": "node scripts/run_fill_tests.mjs"
   },
   "dependencies": {
     "@excalidraw/element": "^0.18.0-abeeaeb",
