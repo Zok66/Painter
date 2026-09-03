@@ -657,10 +657,13 @@ export default function App() {
       const apply = opts?.apply !== false;
       const p = animProjectRef.current;
       const scene = buildSceneAtTime(p, baseElementsRef.current, t);
+      // 先按「基准插值场景」(scene) 播种一份快照（拖拽过程中 apply=false 复用此路径）
       const shown = new Map<string, AnimProps>();
       scene.forEach((el, i) => shown.set(el.id, propsFromElement(el, i)));
-      lastShownPropsRef.current = shown;
-      if (!apply) return;
+      if (!apply) {
+        lastShownPropsRef.current = shown;
+        return;
+      }
       const api = excalidrawAPIRef.current;
       if (!api) return;
       // 标记回声窗口：Excalidraw 接收我们推上去的 elements 后会归一化（重算 width/height、
@@ -668,27 +671,33 @@ export default function App() {
       // 不要把这些「同位置抖动」当成用户编辑来录关键帧。
       animAppliedAtRef.current = Date.now();
       animApplyingRef.current = true;
-      if (!onion.enabled) {
-        api.updateScene({ elements: scene, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
-        api.refresh();
-        setTimeout(() => { animApplyingRef.current = false; }, 0);
-        return;
+      let pushed = scene;
+      if (onion.enabled) {
+        const stepT = 1 / Math.max(1, p.fps);
+        const before: ExcalidrawElement[][] = [];
+        const after: ExcalidrawElement[][] = [];
+        for (let d = onion.before; d >= 1; d--) {
+          const tt = t - d * stepT;
+          if (tt < 0) continue;
+          before.unshift(buildSceneAtTime(p, baseElementsRef.current, tt));
+        }
+        for (let d = 1; d <= onion.after; d++) {
+          const tt = t + d * stepT;
+          if (tt > p.durationSec) continue;
+          after.push(buildSceneAtTime(p, baseElementsRef.current, tt));
+        }
+        pushed = composeSceneWithOnion({ current: scene, before, after, config: onion });
       }
-      const stepT = 1 / Math.max(1, p.fps);
-      const before: ExcalidrawElement[][] = [];
-      const after: ExcalidrawElement[][] = [];
-      for (let d = onion.before; d >= 1; d--) {
-        const tt = t - d * stepT;
-        if (tt < 0) continue;
-        before.unshift(buildSceneAtTime(p, baseElementsRef.current, tt));
-      }
-      for (let d = 1; d <= onion.after; d++) {
-        const tt = t + d * stepT;
-        if (tt > p.durationSec) continue;
-        after.push(buildSceneAtTime(p, baseElementsRef.current, tt));
-      }
-      const next = composeSceneWithOnion({ current: scene, before, after, config: onion });
-      api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+      // 关键修复：用「实际推到画布的 scene」(pushed) 的索引给 z 播种。
+      // propsFromElement 把 z 算成「元素在场景数组里的索引」，这个值并不稳定——
+      // 洋葱皮幽灵、选中态、场景增删都会让它漂移，导致 onChange 里 now.z 与这里
+      // 播下的 prev.z 永远对不上，被 JSON 全量签名误判为「变了」→ 一停手/一开面板
+      // 就自动打帧。改用 pushed 的真实索引播种后，推完之后 Excalidraw 场景索引与
+      // prev.z 对齐，松手/打开面板不再误打帧；真正的层级(置顶/置底)变动仍会被正常录到。
+      const shown2 = new Map<string, AnimProps>();
+      pushed.forEach((el, i) => shown2.set(el.id, propsFromElement(el, i)));
+      lastShownPropsRef.current = shown2;
+      api.updateScene({ elements: pushed, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
       api.refresh();
       setTimeout(() => { animApplyingRef.current = false; }, 0);
     },
