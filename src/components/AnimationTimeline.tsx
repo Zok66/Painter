@@ -239,7 +239,7 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
           aria-label={collapsed ? "展开详情" : "收起详情"}
           aria-expanded={!collapsed}
         >
-          <Icon name={collapsed ? "chevron-down" : "chevron-up"} />
+          <Icon name={collapsed ? "chevron-up" : "chevron-down"} />
         </button>
         <button className="anim-btn ghost" onClick={onClose} title="关闭">
           <Icon name="close" />
