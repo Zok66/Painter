@@ -42,6 +42,8 @@ export interface AnimationTimelineProps {
   onOnionChange: (onion: OnionConfig) => void;
   onPlayheadChange: (t: number) => void;
   onPlayToggle: () => void;
+  playMode: "once" | "loop";
+  onPlayModeChange: (mode: "once" | "loop") => void;
   onExportGif: (scale: number, background: boolean) => void;
   exporting: boolean;
   exportProgress: { done: number; total: number };
@@ -69,6 +71,8 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
     onOnionChange,
     onPlayheadChange,
     onPlayToggle,
+    playMode,
+    onPlayModeChange,
     onExportGif,
     exporting,
     exportProgress,
@@ -125,6 +129,24 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
         <button className="anim-play" onClick={onPlayToggle} title="播放/停止（空格）">
           {playing ? "❚❚" : "▶"}
         </button>
+        <div className="anim-playmode" role="group" aria-label="播放模式">
+          <button
+            type="button"
+            className={playMode === "loop" ? "active" : ""}
+            onClick={() => onPlayModeChange("loop")}
+            title="循环播放"
+          >
+            循环
+          </button>
+          <button
+            type="button"
+            className={playMode === "once" ? "active" : ""}
+            onClick={() => onPlayModeChange("once")}
+            title="播放一次"
+          >
+            一次
+          </button>
+        </div>
         <span className="anim-time">
           {playheadT.toFixed(2)}s / {durationSec.toFixed(2)}s
         </span>

@@ -308,6 +308,11 @@ export default function App() {
   }, [animPlaying]);
   const [playheadT, setPlayheadT] = useState(0);
   const playheadRef = useRef(0);
+  const [playMode, setPlayMode] = useState<"once" | "loop">("loop");
+  const playModeRef = useRef<"once" | "loop">("loop");
+  useEffect(() => {
+    playModeRef.current = playMode;
+  }, [playMode]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [onion, setOnion] = useState<OnionConfig>({ enabled: true, before: 1, after: 1, opacity: 30 });
   const animApplyingRef = useRef(false);
@@ -829,6 +834,7 @@ export default function App() {
       clearTimeout(playTimerRef.current);
       playTimerRef.current = null;
     }
+    animPlayingRef.current = false;
     setAnimPlaying(false);
   }, []);
 
@@ -845,20 +851,27 @@ export default function App() {
     const total = Math.max(1, Math.round(p.durationSec * fps));
     const perFrameMs = 1000 / fps;
     setAnimPlaying(true);
+    animPlayingRef.current = true;
     let i = 0;
     const step = () => {
       if (!animPlayingRef.current) return;
+      if (i > total) {
+        if (playModeRef.current === "loop") {
+          i = 0;
+        } else {
+          stopPlayback();
+          playheadRef.current = 0;
+          setPlayheadT(0);
+          applyProjectToCanvas(0);
+          return;
+        }
+      }
       const t = i / fps;
       const scene = buildSceneAtTime(p, baseElementsRef.current, t);
       api.updateScene({ elements: scene, captureUpdate: CaptureUpdateAction.EVENTUALLY });
+      playheadRef.current = t;
+      setPlayheadT(t);
       i += 1;
-      if (i > total) {
-        stopPlayback();
-        playheadRef.current = 0;
-        setPlayheadT(0);
-        applyProjectToCanvas(0);
-        return;
-      }
       playTimerRef.current = setTimeout(step, perFrameMs);
     };
     step();
@@ -2167,6 +2180,8 @@ export default function App() {
           onOnionChange={handleOnionChange}
           onPlayheadChange={handlePlayheadChange}
           onPlayToggle={handleTogglePlay}
+          playMode={playMode}
+          onPlayModeChange={setPlayMode}
           onExportGif={handleExportGif}
           exporting={exporting}
           exportProgress={exportProgress}

@@ -38,6 +38,32 @@
   justify-content: center;
 }
 
+.anim-playmode {
+  display: inline-flex;
+  border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+  border-radius: var(--border-radius-md, 8px);
+  overflow: hidden;
+}
+
+.anim-playmode button {
+  border: none;
+  background: var(--color-background-primary, #fff);
+  color: var(--color-text-secondary, #555);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 10px;
+  line-height: 1.2;
+}
+
+.anim-playmode button + button {
+  border-left: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+}
+
+.anim-playmode button.active {
+  background: #534ab7;
+  color: #fff;
+}
+
 .anim-time {
   font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary, #555);
