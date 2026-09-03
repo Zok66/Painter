@@ -279,10 +279,6 @@ export default function App() {
   // ── 帧动画 ─────────────────────────────────────────────
   // 轨道挂在「当前笔记本页」上：切页时整条帧序列跟着换，不同页各画各的动画。
   // 画布上显示的永远是「当前帧」的内容，存页 / 导出前记得剥掉洋葱皮幽灵。
-  useEffect(() => {
-    animPlayingRef.current = animPlaying;
-  }, [animPlaying]);
-  // 画布上显示的永远是「当前帧」的内容，存页 / 导出前记得剥掉洋葱皮幽灵。
   const [animTrack, setAnimTrack] = useState<AnimTrack>(() =>
     loadTrack(notebookState.activePageId),
   );
@@ -294,6 +290,10 @@ export default function App() {
   const [animOpen, setAnimOpen] = useState(false);
   const [animPlaying, setAnimPlaying] = useState(false);
   const animPlayingRef = useRef(false);
+  // 播放中的标记要给防抖保存 / 翻帧用（它们读 ref 不读 state，避免闭包旧值）
+  useEffect(() => {
+    animPlayingRef.current = animPlaying;
+  }, [animPlaying]);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ done: 0, total: 0 });

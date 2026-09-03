@@ -79,8 +79,8 @@ export async function exportAnimationToGif({
   if (!ctx) throw new Error("无法创建导出画布");
 
   const gif = GIFEncoder();
-  // GIF 的 delay 单位是 1/100 秒
-  const perFrame = 100 / Math.max(1, fps);
+  // gifenc 的 writeFrame.delay 期望毫秒，先算好每帧毫秒数
+  const perFrameMs = 1000 / Math.max(1, fps);
 
   const paperBefore = getPaperTemplate();
   setPaperTemplate("blank");
@@ -113,22 +113,35 @@ export async function exportAnimationToGif({
         const [fMinX, fMinY] = getCommonBounds(
           els as unknown as Parameters<typeof getCommonBounds>[0],
         );
-        // 这一帧画布左上角在全局画布里的位置
-        const dx = Math.round((fMinX - PADDING - gMinX) * safeScale);
-        const dy = Math.round((fMinY - PADDING - gMinY) * safeScale);
+        // 单帧画布左上角对应场景 (fMinX-PADDING, fMinY-PADDING)，
+        // composite 起点对应场景 (gMinX-PADDING, gMinY-PADDING)，
+        // 所以元素 bbox 左上 (fMinX, fMinY) 应落在 composite 的 (fMinX-gMinX, fMinY-gMinY)。
+        const dx = Math.round((fMinX - gMinX) * safeScale);
+        const dy = Math.round((fMinY - gMinY) * safeScale);
         ctx.drawImage(canvas, dx, dy, canvas.width, canvas.height);
       }
 
       const imageData = ctx.getImageData(0, 0, width, height);
-      const rgba = new Uint32Array(imageData.data.buffer);
+      // gifenc 的 quantize/applyPalette 要求 flat 的 Uint8ClampedArray（逐字节 RGBA），
+      // 直接传 imageData.data；千万不要包成 Uint32Array，否则会抛
+      // "quantize() expected RGBA Uint8Array data"。
+      const rgba = imageData.data;
       const palette = quantize(rgba, 256, { format: "rgba4444", oneBitAlpha: true });
       const index = applyPalette(rgba, palette, "rgba4444");
-      const delay = Math.max(2, Math.round(perFrame * Math.max(1, frame.hold)));
+      const delay = Math.round(perFrameMs * Math.max(1, frame.hold));
       const transparent = !background;
+      // 透明底时，把调色板里首个纯透明项设为透明索引；否则 gifenc 默认 0 可能
+      // 误把不透明色当成透明，背景闪现色块。
+      let transparentIndex = 0;
+      if (transparent) {
+        const idx = palette.findIndex((c) => c.length >= 4 && c[3] === 0);
+        if (idx >= 0) transparentIndex = idx;
+      }
       gif.writeFrame(index, width, height, {
         palette,
         delay,
         transparent,
+        transparentIndex,
         // 只在第一帧写循环次数，0 = 无限循环
         repeat: i === 0 ? 0 : -1,
       });

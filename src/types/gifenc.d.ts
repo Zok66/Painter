@@ -46,14 +46,16 @@ declare module "gifenc" {
     clearAlpha?: boolean;
   }
 
+  // 注意：运行时必须是 flat 的 Uint8Array / Uint8ClampedArray（逐字节 RGBA），
+  // 传 Uint32Array 会让 gifenc 抛错。ImageData.data 是 Uint8ClampedArray，正好可用。
   export function quantize(
-    rgba: Uint8Array | Uint32Array,
+    rgba: Uint8Array | Uint8ClampedArray,
     maxColors: number,
     opts?: QuantizeOptions,
   ): number[][];
 
   export function applyPalette(
-    rgba: Uint8Array | Uint32Array,
+    rgba: Uint8Array | Uint8ClampedArray,
     palette: number[][],
     format?: string,
   ): Uint8Array;
