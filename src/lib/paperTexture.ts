@@ -96,6 +96,11 @@ export function setPaperTemplate(template: PaperTemplate) {
   currentTemplate = template;
 }
 
+/** 导出动画时要临时摘掉纸纹，导完再还原，所以需要读当前值 */
+export function getPaperTemplate(): PaperTemplate {
+  return currentTemplate;
+}
+
 export function setPaperDark(isDark: boolean) {
   currentDark = isDark;
 }

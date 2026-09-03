@@ -13,6 +13,7 @@
   "dependencies": {
     "@excalidraw/element": "^0.18.0-abeeaeb",
     "@excalidraw/excalidraw": "^0.18.0-abeeaeb",
+    "gifenc": "^1.0.3",
     "polygon-clipping": "^0.15.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

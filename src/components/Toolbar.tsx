@@ -21,6 +21,8 @@ export interface ToolbarActions {
   fillActive: boolean;
   notebookOpen: boolean;
   onToggleNotebook: () => void;
+  animOpen: boolean;
+  onToggleAnim: () => void;
   isDark: boolean;
 }
 
@@ -44,11 +46,13 @@ export default function Toolbar(props: ToolbarProps) {
     activePen,
     onFillBucket,
     fillActive,
-    notebookOpen,
-    onToggleNotebook,
-    isDark,
-    saving,
-  } = props;
+  notebookOpen,
+  onToggleNotebook,
+  animOpen,
+  onToggleAnim,
+  isDark,
+  saving,
+} = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleOpenClick = () => fileInputRef.current?.click();
@@ -104,6 +108,34 @@ export default function Toolbar(props: ToolbarProps) {
             </svg>
           </span>
           <span className="notebook-text">笔记本</span>
+        </button>
+
+        {/* 动画帧编辑器：当前页的逐帧动画（时间轴 + 洋葱皮 + 导出 GIF） */}
+        <button
+          className={clsx("btn btn-anim", animOpen && "active")}
+          onClick={onToggleAnim}
+          title="动画：给当前页做逐帧动画，带洋葱皮参考，可导出 GIF"
+          aria-pressed={animOpen}
+        >
+          <span className="anim-icon" aria-hidden>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            >
+              {/* 胶片：外框 + 两条分帧线 + 上下齿孔 */}
+              <path d="M3.5 5.5h17v13h-17z" />
+              <path d="M3.5 9.8h17M3.5 14.2h17" />
+              <path d="M6.5 5.5v1.6M10 5.5v1.6M14 5.5v1.6M17.5 5.5v1.6" />
+              <path d="M6.5 18.5v-1.6M10 18.5v-1.6M14 18.5v-1.6M17.5 18.5v-1.6" />
+            </svg>
+          </span>
+          <span className="anim-text">动画</span>
         </button>
 
         <div className="divider" />

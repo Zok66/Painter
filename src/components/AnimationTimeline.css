@@ -1,0 +1,370 @@
+/* 动画时间轴面板
+ *
+ * 与 NotebookPanel 同源：配色 / 圆角 / 投影全部取 .app 上声明的
+ * Excalidraw token（--island-bg-color / --color-on-surface / --color-gray-20），
+ * 明暗主题自动跟随。面板是 .app 的 flex 子项，占底部一条，画布自动让位。 */
+
+.anim-timeline {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--island-bg-color);
+  border-top: 1px solid var(--color-gray-20);
+  color: var(--color-on-surface);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  user-select: none;
+}
+
+/* ── 控制行 ───────────────────────────────────────────── */
+
+.anim-timeline-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.625rem;
+  border-bottom: 1px solid var(--color-gray-20);
+  flex-wrap: wrap;
+}
+
+.anim-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.anim-divider {
+  width: 1px;
+  height: 1.125rem;
+  background: var(--color-gray-20);
+  flex: 0 0 auto;
+}
+
+.anim-spacer {
+  flex: 1 1 auto;
+}
+
+.anim-title {
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.anim-subtitle {
+  font-size: 0.6875rem;
+  color: var(--color-gray-80);
+}
+
+.anim-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--color-on-surface);
+  cursor: pointer;
+}
+
+.anim-icon-btn:hover:not(:disabled) {
+  background: var(--button-hover-bg);
+}
+
+.anim-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.anim-play.is-playing {
+  background: var(--color-primary);
+  color: var(--color-on-primary-container);
+}
+
+.anim-toggle {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-border-outline-variant);
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--color-on-surface);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.anim-toggle.is-on {
+  background: var(--color-surface-primary-container);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary-container);
+}
+
+.anim-settings {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.anim-popover {
+  position: absolute;
+  top: 2.25rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 12rem;
+  padding: 0.625rem 0.75rem;
+  background: var(--popup-bg-color);
+  border: 1px solid var(--color-gray-20);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-island);
+}
+
+.anim-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-on-surface);
+}
+
+.anim-field-label {
+  color: var(--color-gray-80);
+}
+
+.anim-field-unit {
+  color: var(--color-gray-80);
+}
+
+.anim-number {
+  width: 3rem;
+  padding: 0.125rem 0.25rem;
+  border: 1px solid var(--color-border-outline-variant);
+  border-radius: var(--border-radius-md);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font-family: inherit;
+  font-size: 0.75rem;
+}
+
+.anim-range {
+  flex: 1 1 auto;
+  min-width: 5rem;
+  accent-color: var(--color-primary);
+}
+
+.anim-select {
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--color-border-outline-variant);
+  border-radius: var(--border-radius-md);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.anim-btn {
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid var(--color-border-outline-variant);
+  border-radius: var(--border-radius-md);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.anim-btn:hover:not(:disabled) {
+  background: var(--button-hover-bg);
+}
+
+.anim-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.anim-btn-primary {
+  background: var(--painter-green);
+  border-color: var(--painter-green-dark);
+  color: #fff;
+}
+
+.anim-btn-primary:hover:not(:disabled) {
+  background: var(--painter-green-dark);
+}
+
+/* ── 帧条 ─────────────────────────────────────────────── */
+
+.anim-frames {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem 0.625rem;
+}
+
+.anim-frames-scroll {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.anim-frame {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  cursor: pointer;
+}
+
+.anim-frame:hover {
+  background: var(--button-hover-bg);
+}
+
+.anim-frame.is-current {
+  border-color: var(--painter-green);
+  background: var(--painter-green-light);
+}
+
+.anim-frame.is-over {
+  border-color: var(--color-primary);
+}
+
+.anim-thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.75rem;
+  height: 3.5rem;
+  border: 1px solid var(--color-gray-20);
+  border-radius: 0.25rem;
+  overflow: hidden;
+  /* 棋盘格：透明底一眼能看出来 */
+  background-color: var(--color-surface-lowest);
+  background-image:
+    linear-gradient(45deg, var(--color-gray-20) 25%, transparent 25%, transparent 75%, var(--color-gray-20) 75%),
+    linear-gradient(45deg, var(--color-gray-20) 25%, transparent 25%, transparent 75%, var(--color-gray-20) 75%);
+  background-size: 10px 10px;
+  background-position:
+    0 0,
+    5px 5px;
+}
+
+.anim-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.anim-thumb-empty {
+  font-size: 0.625rem;
+  color: var(--color-gray-80);
+}
+
+.anim-frame-index {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0 0.25rem;
+  min-width: 0.875rem;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.625rem;
+  line-height: 0.875rem;
+  border-bottom-right-radius: 0.25rem;
+}
+
+.anim-frame-hold {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0 0.25rem;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.625rem;
+  line-height: 0.875rem;
+  border-bottom-left-radius: 0.25rem;
+}
+
+.anim-frame-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+}
+
+.anim-mini {
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 0.1875rem;
+  background: transparent;
+  color: var(--color-on-surface);
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.anim-mini:hover:not(:disabled) {
+  background: var(--button-hover-bg);
+  border-color: var(--color-border-outline-variant);
+}
+
+.anim-mini:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.anim-mini-danger:hover:not(:disabled) {
+  background: #e03131;
+  border-color: #c92a2a;
+  color: #fff;
+}
+
+.anim-hold-value {
+  min-width: 0.875rem;
+  text-align: center;
+  font-size: 0.6875rem;
+  color: var(--color-gray-80);
+}
+
+.anim-frame-add {
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  width: 4.75rem;
+  height: 4.5rem;
+  border: 1px dashed var(--color-border-outline-variant);
+  color: var(--color-gray-80);
+}
+
+.anim-add-mark {
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.anim-add-text {
+  font-size: 0.6875rem;
+}
+
+.anim-frames-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  padding-top: 0.25rem;
+}

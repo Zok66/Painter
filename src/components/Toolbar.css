@@ -147,6 +147,28 @@
 .notebook-text {
   line-height: 1;
 }
+
+/* —— 动画帧编辑器入口：与笔记本按钮同一形态 —— */
+.btn-anim {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.anim-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+  flex: 0 0 auto;
+}
+
+.anim-text {
+  line-height: 1;
+}
 .btn-smartshape {
   display: inline-flex;
   align-items: center;
