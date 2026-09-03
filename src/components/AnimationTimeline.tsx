@@ -86,6 +86,19 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
   const [exportScale, setExportScale] = useState(1);
   const [exportBg, setExportBg] = useState(false);
   const [showOnion, setShowOnion] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const toggleCollapsed = () => {
+    setCollapsed((v) => {
+      const next = !v;
+      // 收起的瞬间把展开中的子面板也关掉，避免折叠后再展开弹回洋葱皮/导出对话框
+      if (next) {
+        setShowOnion(false);
+        setShowExport(false);
+      }
+      return next;
+    });
+  };
 
   const pct = (t: number) => `${(t / durationSec) * 100}%`;
 
@@ -179,12 +192,21 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
             ? `导出中 ${exportProgress.done}/${exportProgress.total}`
             : "导出 GIF"}
         </button>
+        <button
+          className="anim-collapse"
+          onClick={toggleCollapsed}
+          title={collapsed ? "展开详情" : "收起详情"}
+          aria-label={collapsed ? "展开详情" : "收起详情"}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? "▾" : "▴"}
+        </button>
         <button className="anim-btn ghost" onClick={onClose} title="关闭">
           ✕
         </button>
       </div>
 
-      {showOnion && (
+      {!collapsed && showOnion && (
         <div className="anim-onion">
           <label>
             <input
@@ -227,7 +249,7 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
         </div>
       )}
 
-      {showExport && (
+      {!collapsed && showExport && (
         <div className="anim-export">
           <label>
             倍率
@@ -251,7 +273,8 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
         </div>
       )}
 
-      <div className="anim-body">
+      {!collapsed && (
+        <div className="anim-body">
         <div className="anim-track-list">
           <div className="anim-track-list-head">动画元素</div>
           {project.tracks.length === 0 && (
@@ -326,8 +349,10 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
           </div>
         </div>
       </div>
+      )}
 
-      <div className="anim-footer">
+      {!collapsed && (
+        <div className="anim-footer">
         <button
           className="anim-btn primary"
           disabled={!hasSelection}
@@ -365,6 +390,7 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
           选中画布元素 → 拖到目标位置 → 在播放头处打关键帧，引擎自动补间
         </span>
       </div>
+      )}
     </div>
   );
 }

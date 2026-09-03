@@ -38,6 +38,26 @@
   justify-content: center;
 }
 
+.anim-collapse {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--border-radius-md, 8px);
+  border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+  background: var(--color-background-secondary, #f3f2ee);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary, #555);
+  padding: 0;
+}
+
+.anim-collapse:hover {
+  background: var(--color-background-tertiary, #e8e7e3);
+}
+
 .anim-playmode {
   display: inline-flex;
   border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
