@@ -26,7 +26,7 @@ import type {
   Theme,
 } from "@excalidraw/excalidraw/element/types";
 import type { GlobalPoint } from "@excalidraw/math";
-import { computeBucketFillPolygon } from "@excalidraw/element";
+import { computeBucketFillPolygon, redrawTextBoundingBox } from "@excalidraw/element";
 import "@excalidraw/excalidraw/index.css";
 import Toolbar from "./components/Toolbar";
 import StylePanel, {
@@ -439,22 +439,56 @@ export default function App() {
         lineHeight: nextLineHeight,
         customData: nextCd,
       } as ExcalidrawElement;
-      // 重算包围盒（竖排 / 字距会改变宽高，保证选中框与导出尺寸精确）
-      const measured = painterMeasureText({
-        text: prev.text ?? "",
-        fontSize: prev.fontSize ?? 16,
-        lineHeight: nextLineHeight,
-        fontFamily: prev.fontFamily ?? 1,
-        customData: nextCd,
-      });
-      (nextEl as unknown as { width: number; height: number }).width =
-        measured.width;
-      // 用户拖过上下手柄设定过框高度时保留它，但不小于内容高度，避免文字被裁切
-      const fixedH = nextCd.fixedHeight;
-      (nextEl as unknown as { width: number; height: number }).height =
-        typeof fixedH === "number"
-          ? Math.max(fixedH, measured.height)
-          : measured.height;
+      // 重算包围盒
+      if (nextCd.textDirection === "vertical") {
+        // 竖排：尺寸由自研 painterMeasureText 计算（列宽 / 列高含字距）
+        const measured = painterMeasureText({
+          text: prev.text ?? "",
+          fontSize: prev.fontSize ?? 16,
+          lineHeight: nextLineHeight,
+          fontFamily: prev.fontFamily ?? 1,
+          customData: nextCd,
+        });
+        (nextEl as unknown as { width: number; height: number }).width =
+          measured.width;
+        // 用户拖过上下手柄设定过框高度时保留它，但不小于内容高度，避免文字被裁切
+        const fixedH = nextCd.fixedHeight;
+        (nextEl as unknown as { width: number; height: number }).height =
+          typeof fixedH === "number"
+            ? Math.max(fixedH, measured.height)
+            : measured.height;
+      } else {
+        // 横排（含字距）：调用 Excalidraw 原生 redrawTextBoundingBox，它内部用打过补丁的
+        // wrapText（字距感知）重新折行，并把结果写回 element.text / height。
+        // 这样渲染态画的折行与编辑态 textarea 的原生折行完全一致，
+        // 修复「进入编辑后文字被字距挤压错位」的问题。
+        const container = (prev as unknown as { containerId?: string }).containerId
+          ? (elements.find(
+              (e) =>
+                e.id === (prev as unknown as { containerId?: string }).containerId,
+            ) as ExcalidrawElement | undefined) ?? null
+          : null;
+        const shimScene = {
+          getNonDeletedElementsMap: () => new Map<string, ExcalidrawElement>(),
+          mutateElement: (el: ExcalidrawElement, props: Partial<ExcalidrawElement>) =>
+            Object.assign(el, props),
+        };
+        redrawTextBoundingBox(nextEl as never, container as never, shimScene as never);
+        // redrawTextBoundingBox 已把字距感知折行写回 nextEl.text（autoResize=false 时）并设置宽度；
+        // 但其内部的 measureText 用的是折行【前】的旧 text，导致高度按旧行数算。
+        // 故这里用 painterMeasureText 对【折行后】的文本二次测量高度，避免框太矮把文字裁切。
+        const m2 = painterMeasureText({
+          text: (nextEl as unknown as { text: string }).text ?? "",
+          fontSize: prev.fontSize ?? 16,
+          lineHeight: nextLineHeight,
+          fontFamily: prev.fontFamily ?? 1,
+          customData: nextCd,
+        });
+        // 用户拖过上下手柄设定过框高度时保留它，但不小于内容高度，避免文字被裁切
+        const fixedH = nextCd.fixedHeight;
+        (nextEl as unknown as { height: number }).height =
+          typeof fixedH === "number" ? Math.max(fixedH, m2.height) : m2.height;
+      }
       const updated = elements.map((e) => (e.id === targetId ? nextEl : e));
       api.updateScene({
         elements: updated,

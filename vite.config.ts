@@ -396,6 +396,83 @@ const TEXT_PATCHES: TextPatch[] = [
     after:
       "d=kh(e.fontFamily,e.fontSize,l);/*__painterVerticalAlign*/let _pPad=0;{let _pCH=s.length*l,_pFree=e.height-_pCH;if(_pFree>0){let _pVA=e.customData&&e.customData.verticalAlign;_pPad=_pVA===\"bottom\"?_pFree:_pVA===\"middle\"?_pFree/2:0}}for(let c=0;c<s.length;c++)n.fillText(s[c],a,c*l+d+_pPad);",
   },
+  // —— 折行：字距>0 时让 wrapText 按含字距宽度折行，与编辑态 textarea 原生折行一致（dev） ——
+  {
+    pkg: "element",
+    anchor: "var redrawTextBoundingBox = (textElement, container, scene) => {",
+    marker: "__painterWrapLSSet",
+    after:
+      '\n  /* __painterWrapLSSet 折行前挂上当前元素字距，供 wrapText 使用 */\n  window.__painterWrapLS = (textElement.customData && textElement.customData.letterSpacing) || 0;\n',
+  },
+  {
+    pkg: "element",
+    anchor: "  boundTextUpdates.height = metrics.height;",
+    marker: "__painterWrapLSReset",
+    after:
+      '\n  /* __painterWrapLSReset 折行/测量结束，清除以免污染其他元素 */\n  window.__painterWrapLS = 0;\n',
+  },
+  {
+    pkg: "element",
+    anchor:
+      'var wrapText = (text, font, maxWidth) => {\n  return getWrappedTextLines(text, font, maxWidth).map((line2) => line2.text).join("\\n");\n};',
+    marker: "__painterWrapTextDev",
+    replace: true,
+    after:
+      'var wrapText = (text, font, maxWidth) => {\n' +
+      '  const _ls = (typeof window !== "undefined" && window.__painterWrapLS) || 0;\n' +
+      '  if (!_ls) {\n' +
+      '    return getWrappedTextLines(text, font, maxWidth).map((line2) => line2.text).join("\\n");\n' +
+      '  }\n' +
+      '  try {\n' +
+      '    const _cv = document.createElement("canvas");\n' +
+      '    const _ctx = _cv.getContext("2d");\n' +
+      '    const _w = (s) => {\n' +
+      '      _ctx.font = font;\n' +
+      '      try { _ctx.letterSpacing = _ls + "px"; } catch (e) {}\n' +
+      '      return _ctx.measureText(s).width;\n' +
+      '    };\n' +
+      '    const out = [];\n' +
+      '    for (const orig of text.split("\\n")) {\n' +
+      '      if (_w(orig) <= maxWidth) { out.push(orig); continue; }\n' +
+      '      let cur = ""; let curW = 0;\n' +
+      '      for (const ch of orig) {\n' +
+      '        _ctx.font = font;\n' +
+      '        try { _ctx.letterSpacing = _ls + "px"; } catch (e) {}\n' +
+      '        const cw = _ctx.measureText(ch).width;\n' +
+      '        if (curW + cw <= maxWidth || !cur) { cur += ch; curW += cw; }\n' +
+      '        else { out.push(cur); cur = ch; curW = cw; }\n' +
+      '      }\n' +
+      '      if (cur) out.push(cur);\n' +
+      '    }\n' +
+      '    return out.join("\\n");\n' +
+      '  } catch (e) {\n' +
+      '    return getWrappedTextLines(text, font, maxWidth).map((line2) => line2.text).join("\\n");\n' +
+      '  }\n' +
+      '};',
+  },
+  // —— 折行 prod 对应（压缩） ——
+  {
+    pkg: "element",
+    anchor: "Uo=(e,t,n)=>{",
+    marker: "__painterWrapLSProdSet",
+    after:
+      'window.__painterWrapLS=(e.customData&&e.customData.letterSpacing)||0;',
+  },
+  {
+    pkg: "element",
+    anchor: "r.height=s.height,t){",
+    marker: "__painterWrapLSProdReset",
+    replace: true,
+    after: "r.height=s.height,window.__painterWrapLS=0,t){",
+  },
+  {
+    pkg: "element",
+    anchor: "rn=(e,t,n)=>Mp(e,t,n).map(i=>i.text).join(`\n`)",
+    marker: "__painterWrapTextProd",
+    replace: true,
+    after:
+      'rn=(e,t,n)=>{const _ls=(typeof window!=="undefined"&&window.__painterWrapLS)||0;if(!_ls)return Mp(e,t,n).map(i=>i.text).join("\\n");try{const _cv=document.createElement("canvas");const _x=_cv.getContext("2d");const _w=s=>{_x.font=t;try{_x.letterSpacing=_ls+"px"}catch(err){}return _x.measureText(s).width};const o=[];for(const g of e.split("\\n")){if(_w(g)<=n){o.push(g);continue}let u="",f=0;for(const ch of g){_x.font=t;try{_x.letterSpacing=_ls+"px"}catch(err){}const cw=_x.measureText(ch).width;if(f+cw<=n||!u){u+=ch;f+=cw}else{o.push(u);u=ch;f=cw}}if(u)o.push(u)}return o.join("\\n")}catch(err){return Mp(e,t,n).map(i=>i.text).join("\\n")}}',
+  },
 
   // —— 编辑态（wysiwyg textarea）：与渲染态对齐——垂直对齐 + 行距 + 字距（dev） ——
   {
