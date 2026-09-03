@@ -308,6 +308,9 @@ export default function App() {
   useEffect(() => {
     animPlayingRef.current = animPlaying;
   }, [animPlaying]);
+  useEffect(() => {
+    animOpenRef.current = animOpen;
+  }, [animOpen]);
   const [playheadT, setPlayheadT] = useState(0);
   const playheadRef = useRef(0);
   const [playMode, setPlayMode] = useState<"once" | "loop">("loop");
@@ -323,6 +326,25 @@ export default function App() {
    *  避免「拖动时间条 = 自动打帧」的 bug（Excalidraw 接到 elements 后归一化 width/height、
    *  points 等字段造成的浮点抖动会反复触发签名比较）。 */
   const animAppliedAtRef = useRef(0);
+  // ── 动画专属撤销/重做栈（面板打开时接管 Ctrl+Z / Ctrl+Shift+Z）──────────
+  // 根因：动画工程存 localStorage，完全在 Excalidraw 自己的撤销栈之外，导致
+  // 「添加帧撤不回」「撤画布后关键帧停留在旧值 → 不同步」。这里把画布场景快照
+  // 与动画工程打包成一步，面板打开时统一回退/前进，保证画面与帧一致。
+  type DocSnapshot = {
+    els: ExcalidrawElement[];
+    appState: AppState;
+    project: AnimProject;
+  };
+  const animUndoStack = useRef<DocSnapshot[]>([]);
+  const animRedoStack = useRef<DocSnapshot[]>([]);
+  const applyingUndoRef = useRef(false);
+  // 一次拖拽手势 = 一个撤销步：pointerDown 时存「手势起点快照」，真正录到关键帧
+  // 的那次 onChange 才把它压栈，pointerUp 清空；避免每次 pointermove 都压一个步。
+  const animOpenRef = useRef(false);
+  // 自动打帧分支用：「变更前」组合快照 + 本次变动是否已压栈。pointerDown 与「稳定态」
+  // 都会刷新它，真正录到关键帧的那次 onChange 才把它压入撤销栈（一次拖拽只压一个步）。
+  const pendingUndoSnapRef = useRef<DocSnapshot | null>(null);
+  const pendingUndoConsumedRef = useRef(false);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ done: 0, total: 0 });
@@ -513,26 +535,43 @@ export default function App() {
             // 窗口外才视为真改动并 upsert 关键帧。
             const inAppliedImmune =
               Date.now() - animAppliedAtRef.current < 300;
-            if (JSON.stringify(now) !== JSON.stringify(prev)) {
-              if (inAppliedImmune) {
-                lastShownPropsRef.current.set(selId, now);
-              } else {
-                // 拖动过程中录关键帧：只更新工程与内存，不重铺画布（避免和拖拽打架）
-                const next = upsertKeyframe(
-                  animProjectRef.current,
-                  selId,
-                  playheadRef.current,
-                  now,
-                );
-                saveProject(notebookStateRef.current.activePageId, next);
-                animProjectRef.current = next;
-                setAnimProject(next);
-                setSceneVersion((v) => v + 1);
-                // 关键：同步刷新「上次铺到画布的快照」，否则 App 重渲染导致 Excalidraw
-                // 因 props 不稳定而重渲染、再次 emit onChange 时，会把同一位置误判为「又变了」，
-                // 进而无限 setState（Maximum update depth → 白屏）。
-                lastShownPropsRef.current.set(selId, now);
+            if (JSON.stringify(now) === JSON.stringify(prev)) {
+              // 稳定态：记录「变更前」组合快照，作为下一步撤销的目标；
+              // 同时复位「本次变动已压栈」标记，等待下一次真正变动。
+              if (!applyingUndoRef.current) {
+                pendingUndoSnapRef.current = captureAnimSnapshot();
+                pendingUndoConsumedRef.current = false;
               }
+              lastShownPropsRef.current.set(selId, now);
+            } else if (inAppliedImmune) {
+              lastShownPropsRef.current.set(selId, now);
+            } else {
+              // 真正变动：若这次变动还没压过栈，用「变更前快照」压一个撤销步
+              // （一次拖拽 = 一个步，避免每个 pointermove 都压一个步）。
+              if (
+                !pendingUndoConsumedRef.current &&
+                pendingUndoSnapRef.current &&
+                animOpenRef.current
+              ) {
+                animUndoStack.current.push(pendingUndoSnapRef.current);
+                animRedoStack.current = [];
+                pendingUndoConsumedRef.current = true;
+              }
+              // 拖动过程中录关键帧：只更新工程与内存，不重铺画布（避免和拖拽打架）
+              const next = upsertKeyframe(
+                animProjectRef.current,
+                selId,
+                playheadRef.current,
+                now,
+              );
+              saveProject(notebookStateRef.current.activePageId, next);
+              animProjectRef.current = next;
+              setAnimProject(next);
+              setSceneVersion((v) => v + 1);
+              // 关键：同步刷新「上次铺到画布的快照」，否则 App 重渲染导致 Excalidraw
+              // 因 props 不稳定而重渲染、再次 emit onChange 时，会把同一位置误判为「又变了」，
+              // 进而无限 setState（Maximum update depth → 白屏）。
+              lastShownPropsRef.current.set(selId, now);
             }
           }
         }
@@ -764,6 +803,116 @@ export default function App() {
       /* 忽略写入错误 */
     }
   }, []);
+  // ── 动画撤销/重做（面板打开时接管 Ctrl+Z / Ctrl+Shift+Z）────────────────
+  /** 抓取「画布场景 + 动画工程」组合快照，作为一步撤销的原子单位 */
+  const captureAnimSnapshot = useCallback((): DocSnapshot => {
+    const api = excalidrawAPIRef.current;
+    const els = api
+      ? (api.getSceneElements() as ExcalidrawElement[]).map((e) => ({ ...e }))
+      : [];
+    const appState = api ? { ...api.getAppState() } : ({} as AppState);
+    return { els, appState, project: animProjectRef.current };
+  }, []);
+
+  /** 把当前快照压入撤销栈（清掉重做栈）。manual 类改动在变更前调用。 */
+  const pushAnimUndo = useCallback(() => {
+    if (!animOpenRef.current) return;
+    const snap = captureAnimSnapshot();
+    const top = animUndoStack.current[animUndoStack.current.length - 1];
+    // 与栈顶相同则跳过，避免重复步
+    if (
+      top &&
+      JSON.stringify(top.project) === JSON.stringify(snap.project) &&
+      JSON.stringify(top.els.map((e) => e.id + e.x + e.y)) ===
+        JSON.stringify(snap.els.map((e) => e.id + e.x + e.y))
+    ) {
+      return;
+    }
+    animUndoStack.current.push(snap);
+    animRedoStack.current = [];
+  }, [captureAnimSnapshot]);
+
+  /** 真正把一份快照落到画布与工程（撤销/重做共用）。复用 Excalidraw 的
+   *  normalize 免疫机制（animAppliedAtRef / animApplyingRef），让恢复后的回声
+   *  只刷新快照、不误录关键帧。 */
+  const applyAnimSnapshot = useCallback((snap: DocSnapshot) => {
+    applyingUndoRef.current = true;
+    animAppliedAtRef.current = Date.now();
+    animApplyingRef.current = true;
+    const api = excalidrawAPIRef.current;
+    if (api) {
+      api.updateScene({
+        elements: snap.els,
+        appState: snap.appState,
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+      api.refresh();
+    }
+    animProjectRef.current = snap.project;
+    setAnimProject(snap.project);
+    saveProject(notebookStateRef.current.activePageId, snap.project);
+    setSceneVersion((v) => v + 1);
+    setTimeout(() => {
+      animApplyingRef.current = false;
+      applyingUndoRef.current = false;
+    }, 0);
+  }, []);
+
+  /** 撤销：仅当面板打开且栈非空时接管；否则返回 false 让 Excalidraw 原生撤销处理。 */
+  const animUndo = useCallback((): boolean => {
+    if (!animOpenRef.current || animUndoStack.current.length === 0) return false;
+    animRedoStack.current.push(captureAnimSnapshot());
+    const snap = animUndoStack.current.pop()!;
+    applyAnimSnapshot(snap);
+    return true;
+  }, [captureAnimSnapshot, applyAnimSnapshot]);
+
+  const animRedo = useCallback((): boolean => {
+    if (!animOpenRef.current || animRedoStack.current.length === 0) return false;
+    animUndoStack.current.push(captureAnimSnapshot());
+    const snap = animRedoStack.current.pop()!;
+    applyAnimSnapshot(snap);
+    return true;
+  }, [captureAnimSnapshot, applyAnimSnapshot]);
+
+  // 把最新函数挂到 ref，供全局 keydown 监听调用（避免闭包过期）
+  const animUndoRef = useRef(animUndo);
+  const animRedoRef = useRef(animRedo);
+  animUndoRef.current = animUndo;
+  animRedoRef.current = animRedo;
+
+  // 面板打开时接管 Ctrl/Cmd+Z（撤销）与 Ctrl/Cmd+Shift+Z / Ctrl+Y（重做）。
+  // 仅当动画撤销栈非空才拦截；否则放行给 Excalidraw 原生撤销（画布常规改动照常可撤）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      const undoActive = animUndoStack.current.length > 0;
+      const redoActive = animRedoStack.current.length > 0;
+      if (key === "z") {
+        if (!animOpenRef.current) return;
+        const wantRedo = e.shiftKey;
+        if (wantRedo && redoActive) {
+          e.preventDefault();
+          e.stopPropagation();
+          animRedoRef.current();
+        } else if (!wantRedo && undoActive) {
+          e.preventDefault();
+          e.stopPropagation();
+          animUndoRef.current();
+        }
+      } else if (key === "y") {
+        if (!animOpenRef.current || !redoActive) return;
+        e.preventDefault();
+        e.stopPropagation();
+        animRedoRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
   // —— 时间轴回调 ——
 
   /** 在播放头处为选中元素加/更关键帧（取该元素当前画布属性） */
@@ -777,6 +926,7 @@ export default function App() {
     const sceneEls = api.getSceneElements() as ExcalidrawElement[];
     const el = sceneEls.find((e) => e.id === selId);
     if (!el) return;
+    pushAnimUndo();
     commitProject(
       upsertKeyframe(
         animProjectRef.current,
@@ -802,9 +952,10 @@ export default function App() {
 
   const handleDeleteKeyframe = useCallback(
     (elementId: string, kfId: string) => {
+      pushAnimUndo();
       commitProject(removeKeyframe(animProjectRef.current, elementId, kfId));
     },
-    [commitProject],
+    [commitProject, pushAnimUndo],
   );
 
   /** 拖动关键帧菱形 = 改时间点（保留属性与缓动） */
@@ -815,6 +966,7 @@ export default function App() {
       const kf = track?.keyframes.find((k) => k.id === kfId);
       if (!kf) return;
       const without = removeKeyframe(p, elementId, kfId);
+      pushAnimUndo();
       commitProject(
         upsertKeyframe(
           without,
@@ -825,43 +977,47 @@ export default function App() {
         ),
       );
     },
-    [commitProject],
+    [commitProject, pushAnimUndo],
   );
 
   const handleSetEasing = useCallback(
     (elementId: string, kfId: string, easing: EasingType) => {
+      pushAnimUndo();
       commitProject(
         setKeyframeEasing(animProjectRef.current, elementId, kfId, easing),
       );
     },
-    [commitProject],
+    [commitProject, pushAnimUndo],
   );
 
   const handleDeleteTrack = useCallback(
     (elementId: string) => {
+      pushAnimUndo();
       commitProject(deleteTrack(animProjectRef.current, elementId));
     },
-    [commitProject],
+    [commitProject, pushAnimUndo],
   );
 
   const handleFpsChange = useCallback(
     (fps: number) => {
+      pushAnimUndo();
       commitProject(
         { ...animProjectRef.current, fps: Math.max(1, Math.round(fps)) },
         { apply: false },
       );
     },
-    [commitProject],
+    [commitProject, pushAnimUndo],
   );
 
   const handleDurationChange = useCallback(
     (sec: number) => {
+      pushAnimUndo();
       commitProject({
         ...animProjectRef.current,
         durationSec: Math.max(0.1, sec),
       });
     },
-    [commitProject],
+    [commitProject, pushAnimUndo],
   );
 
   const handleOnionChange = useCallback(
@@ -999,11 +1155,26 @@ export default function App() {
       }
       setAnimOpen(false);
       lastShownPropsRef.current = new Map();
+      animUndoStack.current = [];
+      animRedoStack.current = [];
+      pendingUndoSnapRef.current = null;
+      pendingUndoConsumedRef.current = false;
       refocusCanvas();
       return;
     }
     captureBaseScene();
     setAnimOpen(true);
+    // 清空 Excalidraw 原生撤销栈：面板打开期间撤销由我们接管（统一回退画布+帧），
+    // 否则内部 applyProjectToCanvas 的 IMMEDIATELY 快照会残留在原生栈里，
+    // 等动画撤销栈空了之后 Ctrl+Z 会误撤到这些内部快照。
+    const api0 = excalidrawAPIRef.current;
+    if (api0 && api0.history) {
+      try {
+        api0.history.clear();
+      } catch {
+        /* 忽略 */
+      }
+    }
     setPlayheadT(0);
     playheadRef.current = 0;
     setSelectedElementId(null);
@@ -1098,6 +1269,11 @@ export default function App() {
       const p = loadProject(pageId);
       animProjectRef.current = p;
       setAnimProject(p);
+      // 撤销栈是内存态，不跨页保留（否则会误撤到上一页的状态）
+      animUndoStack.current = [];
+      animRedoStack.current = [];
+      pendingUndoSnapRef.current = null;
+      pendingUndoConsumedRef.current = false;
       const baseJson = loadBaseScene(pageId);
       if (baseJson) {
         try {
@@ -1728,6 +1904,12 @@ export default function App() {
   // 自研智能画笔：完全自己采集轨迹，不经过 Excalidraw 的 freedraw/autoshape
   const handlePointerDown = useCallback(
     (activeTool: ActiveTool, pointerDownState: PointerDownState) => {
+      // 动画：在真正改动前抓取「手势起点」组合快照，作为本次拖拽的撤销目标
+      // （一次拖拽 = 一个撤销步，配合 handleChange 里 pendingUndoConsumedRef 去重）。
+      if (animOpenRef.current) {
+        pendingUndoSnapRef.current = captureAnimSnapshot();
+        pendingUndoConsumedRef.current = false;
+      }
       // 油漆桶：单击即填充，不拖拽采集
       if (isFillTool(activeTool)) {
         handleFillClick(pointerDownState.origin.x, pointerDownState.origin.y);
