@@ -545,11 +545,15 @@ function patchTextFormatting(): Plugin {
 /**
  * 原生选中面板「操作」行注入翻转 / 镜像按钮。
  *
- * actionFlipHorizontal / actionFlipVertical 已在 actionManager 注册
- * （快捷键 Shift+H / Shift+V 就是它们），只是原生没把按钮渲染进左侧
- * 面板。这里在「操作」行 buttonList 的复制按钮之前插入
- * renderAction("flipHorizontal") / renderAction("flipVertical")，
- * 完全复用原生翻转逻辑（绑定文字、箭头、frame 成员等边界情况由原生处理）。
+ * 原生 actionFlipHorizontal / actionFlipVertical 已在 actionManager 注册
+ * （快捷键 Shift+H / Shift+V 就是它们），几何逻辑完整（处理箭头、绑定文字、
+ * frame 成员、线性元素、旋转等边界），只是它没有 PanelComponent，因此
+ * renderAction("flipHorizontal") 返回 null、原生面板不渲染翻转按钮。
+ *
+ * 这里直接在「操作」行的复制按钮之前注入两个 IconButton，点击时调用
+ * app.actionManager.executeAction(flipAction, "api") 复用原生 perform，
+ * 零自研翻转逻辑、零边界遗漏。IconButton / flipHorizontal / flipVertical /
+ * app 在 dev bundle 单模块里均为顶层绑定，可直接引用。
  */
 function patchFlipActions(): Plugin {
   return {
@@ -559,32 +563,23 @@ function patchFlipActions(): Plugin {
       if (code.includes("__painterFlipActions")) return null;
 
       // dev（未压缩）：左侧面板操作行 = duplicate 紧跟 delete（该组合唯一，
-      // 悬浮工具条 / compact 行的形态不同，不会误伤）
+      // 悬浮工具条 / compact 行的形态不同，不会误伤）。
+      // 注入位置在 renderAction("duplicateSelection") 之前，使翻转按钮排在最前。
       const devAnchor =
         'renderAction("duplicateSelection"),\n        renderAction("deleteSelectedElements"),';
       if (code.includes(devAnchor)) {
         const injected =
-          '/* __painterFlipActions */\n        renderAction("flipHorizontal"),\n        renderAction("flipVertical"),\n        ';
-        return code.replace(
-          devAnchor,
-          injected + devAnchor,
-        );
+          '/* __painterFlipActions */\n' +
+          'jsx77(IconButton, { type: "button", icon: flipHorizontal, title: t("labels.flipHorizontal") + " — Shift+H", "aria-label": t("labels.flipHorizontal"), onClick: () => app.actionManager.executeAction(app.actionManager.actions.flipHorizontal, "api"), disabled: Object.keys(appState.selectedElementIds).length === 0 }),\n' +
+          'jsx77(IconButton, { type: "button", icon: flipVertical, title: t("labels.flipVertical") + " — Shift+V", "aria-label": t("labels.flipVertical"), onClick: () => app.actionManager.executeAction(app.actionManager.actions.flipVertical, "api"), disabled: Object.keys(appState.selectedElementIds).length === 0 }),\n' +
+          '        ';
+        return code.replace(devAnchor, injected + devAnchor);
       }
 
-      // prod（压缩）：children:[n("duplicateSelection"),n("deleteSelectedElements")
-      // n 是压缩后的 renderAction 形参名，每次 npm install 可能变化，用反向引用匹配。
-      const prodRe =
-        /children:\[([A-Za-z$_][\w$]*)\("duplicateSelection"\),\1\("deleteSelectedElements"\)/;
-      const m = code.match(prodRe);
-      if (m) {
-        const fn = m[1];
-        return code.replace(
-          prodRe,
-          `children:[/*__painterFlipActions*/${fn}("flipHorizontal"),${fn}("flipVertical"),${fn}("duplicateSelection"),${fn}("deleteSelectedElements")`,
-        );
-      }
-
-      console.warn("[flip-actions] 锚点未找到，跳过：", id);
+      // prod（压缩）：renderAction 形参被压缩，flip 图标 / IconButton 名也压缩，
+      // 无法在浏览器里稳定验证；保持安全 no-op（不注入、不破坏现有功能）。
+      // 注：本项目的文字格式化等补丁在 prod 同样随 npm install 压缩名变化而失效，
+      // dev 才是主要运行形态。prod 如需翻转按钮，可后续按当时压缩签名补一份锚点。
       return null;
     },
   };
