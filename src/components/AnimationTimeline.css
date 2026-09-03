@@ -291,25 +291,52 @@
   border-bottom: 0.5px dashed var(--color-border-tertiary, rgba(0, 0, 0, 0.08));
 }
 
-.kf-diamond {
+.kf-pos {
   position: absolute;
   top: 50%;
-  width: 11px;
-  height: 11px;
-  background: #534ab7;
-  transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 2px;
-  cursor: grab;
+  transform: translate(-50%, -50%);
   z-index: 4;
 }
 
-.kf-diamond:hover {
+.kf-diamond {
+  width: 11px;
+  height: 11px;
+  background: #534ab7;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  cursor: grab;
+}
+
+.kf-pos:hover .kf-diamond {
   background: #3c3489;
 }
 
-.kf-diamond.sel {
+.kf-pos.sel .kf-diamond {
   background: #d85a30;
   box-shadow: 0 0 0 2px rgba(216, 90, 48, 0.3);
+}
+
+.kf-del {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid #d85a30;
+  color: #d85a30;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.kf-del:hover {
+  background: #d85a30;
+  color: #fff;
 }
 
 .anim-footer {

@@ -128,6 +128,20 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
   const [showOnion, setShowOnion] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  // 区分单击 vs 拖动：pointerdown 仅记起点，超过 3px 才进入真正的拖动
+  const pointerDownRef = useRef<
+    { elementId: string; kfId: string; startX: number; startY: number } | null
+  >(null);
+  // 镜像到 ref，给全局监听器读最新值，避免 effect 频繁重建
+  const draggingKfRef = useRef(draggingKf);
+  const selectedKfRef = useRef(selectedKf);
+  useEffect(() => {
+    draggingKfRef.current = draggingKf;
+  }, [draggingKf]);
+  useEffect(() => {
+    selectedKfRef.current = selectedKf;
+  }, [selectedKf]);
+
   const toggleCollapsed = () => {
     setCollapsed((v) => {
       const next = !v;
@@ -151,13 +165,35 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
   };
 
   useEffect(() => {
-    if (!draggingKf) return;
+    const DRAG_THRESHOLD = 3; // px
     const move = (e: PointerEvent) => {
+      const pd = pointerDownRef.current;
+      if (!pd) return;
+      const dragging = draggingKfRef.current;
+      if (!dragging) {
+        // 还没真正进入拖动：检测是否越过阈值，越过则升级为拖动
+        const dx = Math.abs(e.clientX - pd.startX);
+        const dy = Math.abs(e.clientY - pd.startY);
+        if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
+          setDraggingKf({ elementId: pd.elementId, kfId: pd.kfId });
+        }
+        return;
+      }
+      // 已在拖动中：实时改关键帧时间 + 拖动播放头
       const t = tFromClientX(e.clientX);
-      onMoveKeyframe(draggingKf.elementId, draggingKf.kfId, t);
+      onMoveKeyframe(dragging.elementId, dragging.kfId, t);
       onPlayheadChange(t);
     };
-    const up = () => setDraggingKf(null);
+    const up = () => {
+      const pd = pointerDownRef.current;
+      const dragging = draggingKfRef.current;
+      // 没有发生拖动 = 视作单击 → 选中（不要立即覆盖正在拖动结束的选中态）
+      if (pd && !dragging) {
+        setSelectedKf({ elementId: pd.elementId, kfId: pd.kfId });
+      }
+      pointerDownRef.current = null;
+      setDraggingKf(null);
+    };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     return () => {
@@ -165,7 +201,25 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
       window.removeEventListener("pointerup", up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draggingKf]);
+  }, []);
+
+  // 键盘删除：选中关键帧时按 Delete / Backspace 直接删除
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const sel = selectedKfRef.current;
+      if (!sel) return;
+      // 输入框 / select / textarea 中 Backspace 属于正常编辑，不抢
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      onDeleteKeyframe(sel.elementId, sel.kfId);
+      setSelectedKf(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 时间标尺刻度（每 0.5s 一条）
   const ticks: number[] = [];
@@ -356,6 +410,8 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
             className="anim-lane"
             ref={laneRef}
             onPointerDown={(e) => {
+              // 点空白轨道 = 取消关键帧选中 + 移动播放头
+              if (selectedKf) setSelectedKf(null);
               onPlayheadChange(tFromClientX(e.clientX));
             }}
           >
@@ -368,20 +424,42 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
                   return (
                     <div
                       key={kf.id}
-                      className={"kf-diamond" + (sel ? " sel" : "")}
+                      className={"kf-pos" + (sel ? " sel" : "")}
                       style={{ left: pct(kf.t) }}
-                      title={`${kf.t.toFixed(2)}s · ${EASING_LABELS[kf.easing]}`}
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        setSelectedKf({ elementId: tr.elementId, kfId: kf.id });
-                        setDraggingKf({ elementId: tr.elementId, kfId: kf.id });
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteKeyframe(tr.elementId, kf.id);
-                        setSelectedKf(null);
-                      }}
-                    />
+                      title={`${kf.t.toFixed(2)}s · ${EASING_LABELS[kf.easing]}${sel ? " · 按 Delete 删除" : ""}`}
+                    >
+                      <div
+                        className="kf-diamond"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          pointerDownRef.current = {
+                            elementId: tr.elementId,
+                            kfId: kf.id,
+                            startX: e.clientX,
+                            startY: e.clientY,
+                          };
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteKeyframe(tr.elementId, kf.id);
+                          setSelectedKf(null);
+                        }}
+                      />
+                      {sel && (
+                        <button
+                          className="kf-del"
+                          title="删除该关键帧（Delete）"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteKeyframe(tr.elementId, kf.id);
+                            setSelectedKf(null);
+                          }}
+                        >
+                          <Icon name="close" size={9} />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -427,7 +505,7 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
           </label>
         )}
         <span className="anim-hint">
-          选中画布元素 → 拖到目标位置 → 在播放头处打关键帧，引擎自动补间
+          拖动关键帧改时间 · 选中后按 Delete 或点 × 删除 · 缓动下拉可改曲线
         </span>
       </div>
       )}
