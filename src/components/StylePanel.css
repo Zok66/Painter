@@ -552,6 +552,9 @@
   color: var(--color-gray-60);
   cursor: pointer;
   line-height: 1;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .text-format-spinners button:hover {
   color: var(--color-on-surface);

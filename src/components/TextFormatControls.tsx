@@ -1,4 +1,10 @@
-import { useId, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { TextDirection, TextVerticalAlign } from "../lib/textFormat";
 
 export interface TextFormatValue {
@@ -119,6 +125,20 @@ function NumericField({
 }: NumericFieldProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const inputId = useId();
+  // 维护最新受控值，避免长按 interval 闭包拿到旧 value 导致只走一步
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const holdTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (holdTimer.current !== null) {
+        window.clearInterval(holdTimer.current);
+        holdTimer.current = null;
+      }
+    },
+    [],
+  );
 
   const commit = (raw: string) => {
     const n = parseFloat(raw);
@@ -133,8 +153,24 @@ function NumericField({
   const displayValue = draft !== null ? draft : value.toFixed(decimals);
 
   const bump = (delta: number) => {
-    const next = Math.max(min, Math.min(max, value + delta));
+    const next = Math.max(min, Math.min(max, valueRef.current + delta));
+    valueRef.current = next;
     onChange(Number(next.toFixed(decimals)));
+  };
+
+  const startHold = (delta: number) => {
+    bump(delta);
+    if (holdTimer.current !== null) {
+      window.clearInterval(holdTimer.current);
+    }
+    holdTimer.current = window.setInterval(() => bump(delta), 90);
+  };
+
+  const stopHold = () => {
+    if (holdTimer.current !== null) {
+      window.clearInterval(holdTimer.current);
+      holdTimer.current = null;
+    }
   };
 
   return (
@@ -165,7 +201,13 @@ function NumericField({
             type="button"
             tabIndex={-1}
             aria-label="增加"
-            onClick={() => bump(step)}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startHold(step);
+            }}
+            onPointerUp={stopHold}
+            onPointerLeave={stopHold}
+            onPointerCancel={stopHold}
           >
             <ChevronUpIcon />
           </button>
@@ -173,7 +215,13 @@ function NumericField({
             type="button"
             tabIndex={-1}
             aria-label="减少"
-            onClick={() => bump(-step)}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startHold(-step);
+            }}
+            onPointerUp={stopHold}
+            onPointerLeave={stopHold}
+            onPointerCancel={stopHold}
           >
             <ChevronDownIcon />
           </button>
@@ -229,7 +277,7 @@ export default function TextFormatControls({
         value={value.lineHeight}
         min={0.8}
         max={3}
-        step={0.05}
+        step={0.01}
         decimals={2}
         onChange={(lineHeight) => onChange({ lineHeight })}
       />
