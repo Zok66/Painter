@@ -318,6 +318,11 @@ export default function App() {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [onion, setOnion] = useState<OnionConfig>({ enabled: true, before: 1, after: 1, opacity: 30 });
   const animApplyingRef = useRef(false);
+  /** 上次 applyProjectToCanvas 触发 Excalidraw 归一化回声的时间戳。
+   *  在 ~300ms 免疫期内，handleChange 只同步刷新「上次铺到画布的快照」但不录帧，
+   *  避免「拖动时间条 = 自动打帧」的 bug（Excalidraw 接到 elements 后归一化 width/height、
+   *  points 等字段造成的浮点抖动会反复触发签名比较）。 */
+  const animAppliedAtRef = useRef(0);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ done: 0, total: 0 });
@@ -467,24 +472,32 @@ export default function App() {
           const prev = lastShownPropsRef.current.get(selId);
           if (cur && prev) {
             const now = propsFromElement(cur, elements.indexOf(cur));
-            // 全量签名比较：只要页面该元素有任何变动（位置/缩放/旋转/透明度/
-            // 顶点弯曲/字体/样式/层级等）就录关键帧，且不漏字段、不会误触发白屏。
+            // 在 applyProjectToCanvas 写下的回声窗口内，Excalidraw 接收我们推上去的
+            // elements 后会做归一化（重算 width/height、normalize points 等），产生
+            // 微小的浮点抖动。这里只刷新快照、不录帧，避免「拖时间条 = 自动打帧」。
+            // 窗口外才视为真改动并 upsert 关键帧。
+            const inAppliedImmune =
+              Date.now() - animAppliedAtRef.current < 300;
             if (JSON.stringify(now) !== JSON.stringify(prev)) {
-              // 拖动过程中录关键帧：只更新工程与内存，不重铺画布（避免和拖拽打架）
-              const next = upsertKeyframe(
-                animProjectRef.current,
-                selId,
-                playheadRef.current,
-                now,
-              );
-              saveProject(notebookStateRef.current.activePageId, next);
-              animProjectRef.current = next;
-              setAnimProject(next);
-              setSceneVersion((v) => v + 1);
-              // 关键：同步刷新「上次铺到画布的快照」，否则 App 重渲染导致 Excalidraw
-              // 因 props 不稳定而重渲染、再次 emit onChange 时，会把同一位置误判为「又变了」，
-              // 进而无限 setState（Maximum update depth → 白屏）。
-              lastShownPropsRef.current.set(selId, now);
+              if (inAppliedImmune) {
+                lastShownPropsRef.current.set(selId, now);
+              } else {
+                // 拖动过程中录关键帧：只更新工程与内存，不重铺画布（避免和拖拽打架）
+                const next = upsertKeyframe(
+                  animProjectRef.current,
+                  selId,
+                  playheadRef.current,
+                  now,
+                );
+                saveProject(notebookStateRef.current.activePageId, next);
+                animProjectRef.current = next;
+                setAnimProject(next);
+                setSceneVersion((v) => v + 1);
+                // 关键：同步刷新「上次铺到画布的快照」，否则 App 重渲染导致 Excalidraw
+                // 因 props 不稳定而重渲染、再次 emit onChange 时，会把同一位置误判为「又变了」，
+                // 进而无限 setState（Maximum update depth → 白屏）。
+                lastShownPropsRef.current.set(selId, now);
+              }
             }
           }
         }
@@ -650,6 +663,10 @@ export default function App() {
       if (!apply) return;
       const api = excalidrawAPIRef.current;
       if (!api) return;
+      // 标记回声窗口：Excalidraw 接收我们推上去的 elements 后会归一化（重算 width/height、
+      // normalize points）并异步触发几次 onChange，这里告诉 handleChange 在 300ms 内
+      // 不要把这些「同位置抖动」当成用户编辑来录关键帧。
+      animAppliedAtRef.current = Date.now();
       animApplyingRef.current = true;
       if (!onion.enabled) {
         api.updateScene({ elements: scene, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
