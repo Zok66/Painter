@@ -77,6 +77,7 @@ import NotebookPanel from "./components/NotebookPanel";
 import ExportSvgDialog from "./components/ExportSvgDialog";
 import AnimationTimeline from "./components/AnimationTimeline";
 import {
+  applyProps,
   buildSceneAtTime,
   deleteProject,
   deleteTrack,
@@ -84,6 +85,7 @@ import {
   loadProject,
   propsFromElement,
   removeKeyframe,
+  sampleTrack,
   saveBaseScene,
   saveProject,
   setKeyframeEasing,
@@ -464,15 +466,10 @@ export default function App() {
           const cur = elements.find((e) => e.id === selId);
           const prev = lastShownPropsRef.current.get(selId);
           if (cur && prev) {
-            const now = propsFromElement(cur);
-            if (
-              now.x !== prev.x ||
-              now.y !== prev.y ||
-              now.width !== prev.width ||
-              now.height !== prev.height ||
-              now.angle !== prev.angle ||
-              now.opacity !== prev.opacity
-            ) {
+            const now = propsFromElement(cur, elements.indexOf(cur));
+            // 全量签名比较：只要页面该元素有任何变动（位置/缩放/旋转/透明度/
+            // 顶点弯曲/字体/样式/层级等）就录关键帧，且不漏字段、不会误触发白屏。
+            if (JSON.stringify(now) !== JSON.stringify(prev)) {
               // 拖动过程中录关键帧：只更新工程与内存，不重铺画布（避免和拖拽打架）
               const next = upsertKeyframe(
                 animProjectRef.current,
@@ -648,7 +645,7 @@ export default function App() {
       const p = animProjectRef.current;
       const scene = buildSceneAtTime(p, baseElementsRef.current, t);
       const shown = new Map<string, AnimProps>();
-      for (const el of scene) shown.set(el.id, propsFromElement(el));
+      scene.forEach((el, i) => shown.set(el.id, propsFromElement(el, i)));
       lastShownPropsRef.current = shown;
       if (!apply) return;
       const api = excalidrawAPIRef.current;
@@ -716,16 +713,15 @@ export default function App() {
       return;
     }
     const selId = selectedElementIdRef.current;
-    const el = (api.getSceneElements() as ExcalidrawElement[]).find(
-      (e) => e.id === selId,
-    );
+    const sceneEls = api.getSceneElements() as ExcalidrawElement[];
+    const el = sceneEls.find((e) => e.id === selId);
     if (!el) return;
     commitProject(
       upsertKeyframe(
         animProjectRef.current,
         selId,
         playheadRef.current,
-        propsFromElement(el),
+        propsFromElement(el, sceneEls.indexOf(el)),
       ),
     );
   }, [toast, commitProject]);
@@ -2081,6 +2077,17 @@ export default function App() {
             setExcalidrawAPI(api);
             setReady(true);
             (window as unknown as Record<string, unknown>).__painterAPI = api;
+            // dev-only 测试钩子：端到端直接验证引擎的 points/颜色/z 插值
+            if (import.meta.env.DEV) {
+              (window as unknown as Record<string, unknown>).__painterAnim = {
+                buildSceneAtTime,
+                sampleTrack,
+                applyProps,
+                propsFromElement,
+                getProject: () => animProjectRef.current,
+                getBase: () => baseElementsRef.current,
+              };
+            }
           }}
           initialData={initialData}
           onChange={handleChange}
