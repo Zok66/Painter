@@ -429,6 +429,41 @@ export default function App() {
       if (fillActive && !isFillTool(appState.activeTool)) {
         setFillActive(false);
       }
+      // 画布上删除了元素 → 同步清理它在动画工程里的轨道与基准场景，
+      // 避免「物体都删了，动画面板数据还在」。否则被删元素会在拖时间条/播放时重新冒出来。
+      {
+        const liveIds = new Set(elements.map((e) => e.id));
+        const project = animProjectRef.current;
+        const deadIds = project.tracks
+          .map((t) => t.elementId)
+          .filter((id) => !liveIds.has(id));
+        if (deadIds.length > 0) {
+          let next = project;
+          for (const id of deadIds) next = deleteTrack(next, id);
+          saveProject(notebookStateRef.current.activePageId, next);
+          animProjectRef.current = next;
+          setAnimProject(next);
+          setSceneVersion((v) => v + 1);
+          // 基准场景里同样移除死元素（基准是它的原始快照，停面板后重新打开会再抓，
+          // 但这里提前清掉可避免播放/拖时间条把已删元素又铺回画布）
+          baseElementsRef.current = baseElementsRef.current.filter((e) =>
+            liveIds.has(e.id),
+          );
+          // 把清理后的基准场景落盘，避免刷新后已删元素从旧基准 JSON 复活
+          try {
+            const baseJson = serializeAsJSON(
+              baseElementsRef.current,
+              appState,
+              files,
+              "local",
+            );
+            saveBaseScene(notebookStateRef.current.activePageId, baseJson);
+          } catch {
+            /* 忽略写入错误 */
+          }
+          for (const id of deadIds) lastShownPropsRef.current.delete(id);
+        }
+      }
       // 文字格式化：检测是否选中单个文字元素，更新面板状态（用签名去重，避免每次变更都重渲染）
       {
         const selIds = Object.keys(appState.selectedElementIds || {});
