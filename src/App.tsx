@@ -319,6 +319,8 @@ export default function App() {
     playModeRef.current = playMode;
   }, [playMode]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  /** 当前选中的编组 id（用于动画面板高亮 group 行），选中非编组元素时为 null */
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [onion, setOnion] = useState<OnionConfig>({ enabled: true, before: 1, after: 1, opacity: 30 });
   const animApplyingRef = useRef(false);
   /** 上次 applyProjectToCanvas 触发 Excalidraw 归一化回声的时间戳。
@@ -521,30 +523,65 @@ export default function App() {
       // （剪映式自动关键帧：在播放头处拖动元素 = 更新该时刻关键帧）
       if (animOpen && !animPlayingRef.current && !animApplyingRef.current) {
         const selIds = Object.keys(appState.selectedElementIds || {});
-        const selId = selIds.length === 1 ? selIds[0] : null;
+        // 编组识别：选中 >1 个元素且它们同属一个「直接 group」时，视为选中了整个编组。
+        // 取每个元素 groupIds 最后一个（直接所属 group）作比较键；非编组多选不进入动画模式。
+        let selId: string | null = null;
+        let groupId: string | null = null;
+        const groupMembers: string[] = [];
+        if (selIds.length === 1) {
+          selId = selIds[0];
+        } else if (selIds.length > 1) {
+          const groups = selIds.map((id) => {
+            const el = elements.find((e) => e.id === id);
+            const g = el?.groupIds;
+            return g && g.length ? g[g.length - 1] : null;
+          });
+          const firstGroup = groups[0];
+          const allSame =
+            firstGroup !== null && groups.every((g) => g === firstGroup);
+          if (allSame && firstGroup) {
+            groupId = firstGroup;
+            groupMembers.push(...selIds);
+            selId = selIds[0];
+          }
+        }
         selectedElementIdRef.current = selId;
         setSelectedElementId(selId);
+        selectedGroupIdRef.current = groupId;
+        setSelectedGroupId(groupId);
+        selectedGroupMembersRef.current = groupMembers;
         if (selId) {
-          const cur = elements.find((e) => e.id === selId);
-          const prev = lastShownPropsRef.current.get(selId);
-          if (cur && prev) {
-            const now = propsFromElement(cur, elements.indexOf(cur));
+          // 编组模式：targets 为组内所有成员；否则只是单个选中元素。
+          const targets = groupId ? groupMembers : [selId];
+          // 为每个目标收集 当前元素 / 上次快照 / 当前属性
+          const records = targets
+            .map((id) => {
+              const cur = elements.find((e) => e.id === id);
+              const prev = lastShownPropsRef.current.get(id);
+              const now = cur ? propsFromElement(cur, elements.indexOf(cur)) : null;
+              return { id, cur, prev, now };
+            })
+            .filter((r) => r.cur && r.prev && r.now);
+          if (records.length) {
             // 在 applyProjectToCanvas 写下的回声窗口内，Excalidraw 接收我们推上去的
             // elements 后会做归一化（重算 width/height、normalize points 等），产生
             // 微小的浮点抖动。这里只刷新快照、不录帧，避免「拖时间条 = 自动打帧」。
             // 窗口外才视为真改动并 upsert 关键帧。
             const inAppliedImmune =
               Date.now() - animAppliedAtRef.current < 300;
-            if (JSON.stringify(now) === JSON.stringify(prev)) {
+            const anyChanged = records.some(
+              (r) => JSON.stringify(r.now) !== JSON.stringify(r.prev),
+            );
+            if (!anyChanged) {
               // 稳定态：记录「变更前」组合快照，作为下一步撤销的目标；
               // 同时复位「本次变动已压栈」标记，等待下一次真正变动。
               if (!applyingUndoRef.current) {
                 pendingUndoSnapRef.current = captureAnimSnapshot();
                 pendingUndoConsumedRef.current = false;
               }
-              lastShownPropsRef.current.set(selId, now);
+              for (const r of records) lastShownPropsRef.current.set(r.id, r.now!);
             } else if (inAppliedImmune) {
-              lastShownPropsRef.current.set(selId, now);
+              for (const r of records) lastShownPropsRef.current.set(r.id, r.now!);
             } else {
               // 真正变动：若这次变动还没压过栈，用「变更前快照」压一个撤销步
               // （一次拖拽 = 一个步，避免每个 pointermove 都压一个步）。
@@ -558,12 +595,10 @@ export default function App() {
                 pendingUndoConsumedRef.current = true;
               }
               // 拖动过程中录关键帧：只更新工程与内存，不重铺画布（避免和拖拽打架）
-              const next = upsertKeyframe(
-                animProjectRef.current,
-                selId,
-                playheadRef.current,
-                now,
-              );
+              let next = animProjectRef.current;
+              for (const r of records) {
+                next = upsertKeyframe(next, r.id, playheadRef.current, r.now!);
+              }
               saveProject(notebookStateRef.current.activePageId, next);
               animProjectRef.current = next;
               setAnimProject(next);
@@ -571,7 +606,7 @@ export default function App() {
               // 关键：同步刷新「上次铺到画布的快照」，否则 App 重渲染导致 Excalidraw
               // 因 props 不稳定而重渲染、再次 emit onChange 时，会把同一位置误判为「又变了」，
               // 进而无限 setState（Maximum update depth → 白屏）。
-              lastShownPropsRef.current.set(selId, now);
+              for (const r of records) lastShownPropsRef.current.set(r.id, r.now!);
             }
           }
         }
@@ -723,6 +758,10 @@ export default function App() {
   const lastShownPropsRef = useRef<Map<string, AnimProps>>(new Map());
   /** 画布当前选中的单个元素 id（同步写，避免 handleChange 闭包拿到旧值） */
   const selectedElementIdRef = useRef<string | null>(null);
+  /** 当前选中的编组 id（选中编组时为该 groupId，否则 null） */
+  const selectedGroupIdRef = useRef<string | null>(null);
+  /** 当前选中的编组成员 id 列表（选中编组时非空，否则空数组） */
+  const selectedGroupMembersRef = useRef<string[]>([]);
 
   /** 把工程落到画布：buildSceneAtTime 插值 + 洋葱皮，写到 Excalidraw。
    *  apply=false 时只更新内存/state 与属性快照，不重铺（拖拽过程中调用，避免和拖拽打架）。 */
@@ -915,38 +954,67 @@ export default function App() {
 
   // —— 时间轴回调 ——
 
-  /** 在播放头处为选中元素加/更关键帧（取该元素当前画布属性） */
+  /** 在播放头处为选中元素(或编组)加/更关键帧（取当前画布属性） */
   const handleAddKeyframe = useCallback(() => {
     const api = excalidrawAPIRef.current;
-    if (!api || !selectedElementIdRef.current) {
+    if (!api) return;
+    // 编组模式：给组内所有成员批量打帧；否则仅给单个选中元素打帧
+    const members = selectedGroupMembersRef.current;
+    const ids =
+      members.length > 0
+        ? members
+        : selectedElementIdRef.current
+          ? [selectedElementIdRef.current]
+          : [];
+    if (ids.length === 0) {
       toast("先在画布选中要动画的元素", "error");
       return;
     }
-    const selId = selectedElementIdRef.current;
     const sceneEls = api.getSceneElements() as ExcalidrawElement[];
-    const el = sceneEls.find((e) => e.id === selId);
-    if (!el) return;
     pushAnimUndo();
-    commitProject(
-      upsertKeyframe(
-        animProjectRef.current,
-        selId,
+    let next = animProjectRef.current;
+    for (const id of ids) {
+      const el = sceneEls.find((e) => e.id === id);
+      if (!el) continue;
+      next = upsertKeyframe(
+        next,
+        id,
         playheadRef.current,
         propsFromElement(el, sceneEls.indexOf(el)),
-      ),
-    );
+      );
+    }
+    commitProject(next);
   }, [toast, commitProject]);
 
-  /** 点轨道 = 在画布上选中那个元素 */
+  /** 点轨道 = 在画布上选中那个元素（或整个编组） */
   const handleSelectTrack = useCallback((id: string) => {
     setSelectedElementId(id);
     selectedElementIdRef.current = id;
     const api = excalidrawAPIRef.current;
     if (api) {
+      const sceneEls = api.getSceneElements() as ExcalidrawElement[];
+    const el = sceneEls.find((e) => e.id === id);
+    const g = el?.groupIds;
+    const gid = g && g.length ? g[g.length - 1] : null;
+    let targetIds: string[] = [id];
+    if (gid) {
+      // 反查出该 group 的全部成员，一次性选中整个编组
+      targetIds = sceneEls
+        .filter((e) => {
+          const eg = e.groupIds;
+          return eg ? eg.includes(gid) : false;
+        })
+        .map((e) => e.id);
+    }
+      const selMap: Record<string, true> = {};
+      for (const tid of targetIds) selMap[tid] = true;
       api.updateScene({
-        appState: { selectedElementIds: { [id]: true } } as never,
+        appState: { selectedElementIds: selMap } as never,
         captureUpdate: CaptureUpdateAction.EVENTUALLY,
       });
+      selectedGroupIdRef.current = gid;
+      setSelectedGroupId(gid);
+      selectedGroupMembersRef.current = gid ? targetIds : [];
     }
   }, []);
 
@@ -2417,6 +2485,15 @@ export default function App() {
             return label;
           }}
           selectedElementId={selectedElementId}
+          selectedGroupId={selectedGroupId}
+          groupOf={(id) => {
+            const els =
+              (excalidrawAPI?.getSceneElements() as ExcalidrawElement[] | undefined) ??
+              baseElementsRef.current;
+            const el = els.find((e) => e.id === id);
+            const g = el?.groupIds;
+            return g && g.length ? g[g.length - 1] : null;
+          }}
           files={animFiles}
           baseElements={baseElementsRef.current}
           onAddKeyframe={handleAddKeyframe}

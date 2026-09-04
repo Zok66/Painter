@@ -69,6 +69,10 @@ export interface AnimationTimelineProps {
   elementName: (id: string) => string;
   /** 画布当前选中的单个元素 id */
   selectedElementId: string | null;
+  /** 当前选中的编组 id（用于高亮 group 行），非编组选中时为 null */
+  selectedGroupId?: string | null;
+  /** 元素所属编组 id（没有则返回 null）—— 用于把多条轨道聚合显示为「编组」一行 */
+  groupOf?: (id: string) => string | null;
   files: BinaryFiles;
   baseElements: readonly ExcalidrawElement[];
   onAddKeyframe: () => void;
@@ -100,6 +104,8 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
     onion,
     elementName,
     selectedElementId,
+    selectedGroupId,
+    groupOf,
     onAddKeyframe,
     onSelectTrack,
     onDeleteKeyframe,
@@ -120,8 +126,12 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
   } = props;
 
   const laneRef = useRef<HTMLDivElement | null>(null);
-  const [draggingKf, setDraggingKf] = useState<{ elementId: string; kfId: string } | null>(null);
-  const [selectedKf, setSelectedKf] = useState<{ elementId: string; kfId: string } | null>(null);
+  /** 关键帧引用：单元素 keyframe，或编组在某时刻的批量关键帧（作用于所有成员） */
+  type KfRef =
+    | { elementId: string; kfId: string }
+    | { groupId: string; t: number; members: { elementId: string; kfId: string }[] };
+  const [draggingKf, setDraggingKf] = useState<KfRef | null>(null);
+  const [selectedKf, setSelectedKf] = useState<KfRef | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [exportScale, setExportScale] = useState(1);
   const [exportBg, setExportBg] = useState(false);
@@ -129,9 +139,16 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   // 区分单击 vs 拖动：pointerdown 仅记起点，超过 3px 才进入真正的拖动
-  const pointerDownRef = useRef<
-    { elementId: string; kfId: string; startX: number; startY: number } | null
-  >(null);
+  type PointerDown =
+    | { elementId: string; kfId: string; startX: number; startY: number }
+    | {
+        groupId: string;
+        t: number;
+        members: { elementId: string; kfId: string }[];
+        startX: number;
+        startY: number;
+      };
+  const pointerDownRef = useRef<PointerDown | null>(null);
   // 镜像到 ref，给全局监听器读最新值，避免 effect 频繁重建
   const draggingKfRef = useRef(draggingKf);
   const selectedKfRef = useRef(selectedKf);
@@ -175,21 +192,39 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
         const dx = Math.abs(e.clientX - pd.startX);
         const dy = Math.abs(e.clientY - pd.startY);
         if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
-          setDraggingKf({ elementId: pd.elementId, kfId: pd.kfId });
+          if ("groupId" in pd) {
+            setDraggingKf({
+              groupId: pd.groupId,
+              t: pd.t,
+              members: pd.members,
+            });
+          } else {
+            setDraggingKf({ elementId: pd.elementId, kfId: pd.kfId });
+          }
         }
         return;
       }
       // 已在拖动中：实时改关键帧时间 + 拖动播放头
       const t = tFromClientX(e.clientX);
-      onMoveKeyframe(dragging.elementId, dragging.kfId, t);
       onPlayheadChange(t);
+      if (dragging && "groupId" in dragging) {
+        for (const m of dragging.members) {
+          onMoveKeyframe(m.elementId, m.kfId, t);
+        }
+      } else if (dragging) {
+        onMoveKeyframe(dragging.elementId, dragging.kfId, t);
+      }
     };
     const up = () => {
       const pd = pointerDownRef.current;
       const dragging = draggingKfRef.current;
       // 没有发生拖动 = 视作单击 → 选中（不要立即覆盖正在拖动结束的选中态）
       if (pd && !dragging) {
-        setSelectedKf({ elementId: pd.elementId, kfId: pd.kfId });
+        if ("groupId" in pd) {
+          setSelectedKf({ groupId: pd.groupId, t: pd.t, members: pd.members });
+        } else {
+          setSelectedKf({ elementId: pd.elementId, kfId: pd.kfId });
+        }
       }
       pointerDownRef.current = null;
       setDraggingKf(null);
@@ -213,7 +248,11 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       e.preventDefault();
-      onDeleteKeyframe(sel.elementId, sel.kfId);
+      if ("groupId" in sel) {
+        for (const m of sel.members) onDeleteKeyframe(m.elementId, m.kfId);
+      } else {
+        onDeleteKeyframe(sel.elementId, sel.kfId);
+      }
       setSelectedKf(null);
     };
     window.addEventListener("keydown", onKey);
@@ -229,6 +268,23 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
   const selectionTracked = selectedElementId
     ? project.tracks.some((tr) => tr.elementId === selectedElementId)
     : false;
+
+  // 聚合轨道行：同 group 的多条 track 合并显示为一行「编组 (N)」
+  const resolveGroup = groupOf ?? (() => null);
+  const groupRows = new Map<string, string[]>();
+  const soloRows: string[] = [];
+  for (const tr of project.tracks) {
+    const g = resolveGroup(tr.elementId);
+    if (g) {
+      if (!groupRows.has(g)) groupRows.set(g, []);
+      groupRows.get(g)!.push(tr.elementId);
+    } else {
+      soloRows.push(tr.elementId);
+    }
+  }
+  const animRows: { isGroup: boolean; key: string; ids: string[] }[] = [];
+  for (const [g, ids] of groupRows) animRows.push({ isGroup: true, key: g, ids });
+  for (const id of soloRows) animRows.push({ isGroup: false, key: id, ids: [id] });
 
   return (
     <div className="anim-timeline">
@@ -374,28 +430,62 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
           {project.tracks.length === 0 && (
             <div className="anim-empty">选中画布元素并打关键帧即可开始</div>
           )}
-          {project.tracks.map((tr) => (
-            <div
-              key={tr.elementId}
-              className={
-                "anim-track-row" + (tr.elementId === selectedElementId ? " active" : "")
-              }
-              onClick={() => onSelectTrack(tr.elementId)}
-            >
-              <span className="anim-track-name">{elementName(tr.elementId)}</span>
-              <span className="anim-track-count">{tr.keyframes.length}帧</span>
-              <button
-                className="anim-track-del"
-                title="删除该元素动画"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteTrack(tr.elementId);
-                }}
+          {animRows.map((row) => {
+            if (row.isGroup) {
+              const isActive = selectedGroupId === row.key;
+              const totalFrames = row.ids.reduce(
+                (s, id) => s + (project.tracks.find((t) => t.elementId === id)?.keyframes.length ?? 0),
+                0,
+              );
+              return (
+                <div
+                  key={`g:${row.key}`}
+                  className={"anim-track-row anim-track-group" + (isActive ? " active" : "")}
+                  onClick={() => onSelectTrack(row.ids[0])}
+                >
+                  <span className="anim-track-name">
+                    <span className="anim-group-badge">编组</span>
+                    {row.ids.length} 个元素
+                  </span>
+                  <span className="anim-track-count">{totalFrames}帧</span>
+                  <button
+                    className="anim-track-del"
+                    title="删除该编组动画"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      for (const id of row.ids) onDeleteTrack(id);
+                    }}
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+              );
+            }
+            const tr = project.tracks.find((t) => t.elementId === row.key);
+            if (!tr) return null;
+            return (
+              <div
+                key={row.key}
+                className={
+                  "anim-track-row" + (row.key === selectedElementId ? " active" : "")
+                }
+                onClick={() => onSelectTrack(row.key)}
               >
-                <Icon name="close" size={14} />
-              </button>
-            </div>
-          ))}
+                <span className="anim-track-name">{elementName(row.key)}</span>
+                <span className="anim-track-count">{tr.keyframes.length}帧</span>
+                <button
+                  className="anim-track-del"
+                  title="删除该元素动画"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteTrack(row.key);
+                  }}
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         <div className="anim-lane-wrap">
@@ -416,52 +506,125 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
             }}
           >
             <div className="anim-playhead" style={{ left: pct(playheadT) }} />
-            {project.tracks.map((tr) => (
-              <div key={tr.elementId} className="anim-lane-row">
-                {tr.keyframes.map((kf) => {
-                  const sel =
-                    selectedKf?.elementId === tr.elementId && selectedKf?.kfId === kf.id;
-                  return (
-                    <div
-                      key={kf.id}
-                      className={"kf-pos" + (sel ? " sel" : "")}
-                      style={{ left: pct(kf.t) }}
-                      title={`${kf.t.toFixed(2)}s · ${EASING_LABELS[kf.easing]}${sel ? " · 按 Delete 删除" : ""}`}
-                    >
-                      <div
-                        className="kf-diamond"
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          pointerDownRef.current = {
-                            elementId: tr.elementId,
-                            kfId: kf.id,
-                            startX: e.clientX,
-                            startY: e.clientY,
-                          };
-                        }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteKeyframe(tr.elementId, kf.id);
-                          setSelectedKf(null);
-                        }}
-                      />
-                      {sel && (
-                        <button
-                          className="kf-del"
-                          title="删除该关键帧（Delete）"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteKeyframe(tr.elementId, kf.id);
-                            setSelectedKf(null);
-                          }}
-                        >
-                          <Icon name="close" size={9} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+            {animRows.map((row) => (
+              <div key={row.isGroup ? `g:${row.key}` : row.key} className="anim-lane-row">
+                {row.isGroup
+                  ? (() => {
+                      // 编组行：把所有成员的关键帧按 t 合并去重，渲染成并集菱形
+                      const byT = new Map<
+                        number,
+                        { t: number; members: { elementId: string; kfId: string }[] }
+                      >();
+                      for (const id of row.ids) {
+                        const tr = project.tracks.find((t) => t.elementId === id);
+                        if (!tr) continue;
+                        for (const kf of tr.keyframes) {
+                          const key = Math.round(kf.t * 1e4);
+                          if (!byT.has(key)) byT.set(key, { t: kf.t, members: [] });
+                          byT.get(key)!.members.push({ elementId: id, kfId: kf.id });
+                        }
+                      }
+                      const items = [...byT.values()].sort((a, b) => a.t - b.t);
+                      return items.map((item) => {
+                        const sel =
+                          !!selectedKf &&
+                          "groupId" in selectedKf &&
+                          selectedKf.groupId === row.key &&
+                          Math.abs(selectedKf.t - item.t) < 1e-4;
+                        return (
+                          <div
+                            key={`${row.key}:${item.t}`}
+                            className={"kf-pos" + (sel ? " sel" : "")}
+                            style={{ left: pct(item.t) }}
+                            title={`${item.t.toFixed(2)}s · 编组关键帧${sel ? " · 按 Delete 删除" : ""}`}
+                          >
+                            <div
+                              className="kf-diamond"
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                pointerDownRef.current = {
+                                  groupId: row.key,
+                                  t: item.t,
+                                  members: item.members,
+                                  startX: e.clientX,
+                                  startY: e.clientY,
+                                };
+                              }}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                for (const m of item.members) onDeleteKeyframe(m.elementId, m.kfId);
+                                setSelectedKf(null);
+                              }}
+                            />
+                            {sel && (
+                              <button
+                                className="kf-del"
+                                title="删除该关键帧（Delete）"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  for (const m of item.members) onDeleteKeyframe(m.elementId, m.kfId);
+                                  setSelectedKf(null);
+                                }}
+                              >
+                                <Icon name="close" size={9} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()
+                  : (() => {
+                      const tr = project.tracks.find((t) => t.elementId === row.key);
+                      if (!tr) return null;
+                      return tr.keyframes.map((kf) => {
+                        const sel =
+                          !!selectedKf &&
+                          !("groupId" in selectedKf) &&
+                          selectedKf.elementId === row.key &&
+                          selectedKf.kfId === kf.id;
+                        return (
+                          <div
+                            key={kf.id}
+                            className={"kf-pos" + (sel ? " sel" : "")}
+                            style={{ left: pct(kf.t) }}
+                            title={`${kf.t.toFixed(2)}s · ${EASING_LABELS[kf.easing]}${sel ? " · 按 Delete 删除" : ""}`}
+                          >
+                            <div
+                              className="kf-diamond"
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                pointerDownRef.current = {
+                                  elementId: row.key,
+                                  kfId: kf.id,
+                                  startX: e.clientX,
+                                  startY: e.clientY,
+                                };
+                              }}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteKeyframe(row.key, kf.id);
+                                setSelectedKf(null);
+                              }}
+                            />
+                            {sel && (
+                              <button
+                                className="kf-del"
+                                title="删除该关键帧（Delete）"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteKeyframe(row.key, kf.id);
+                                  setSelectedKf(null);
+                                }}
+                              >
+                                <Icon name="close" size={9} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
               </div>
             ))}
           </div>
@@ -484,17 +647,32 @@ export default function AnimationTimeline(props: AnimationTimelineProps) {
             缓动
             <select
               value={
-                project.tracks
-                  .find((t) => t.elementId === selectedKf.elementId)
-                  ?.keyframes.find((k) => k.id === selectedKf.kfId)?.easing ?? "linear"
+                (() => {
+                  if ("groupId" in selectedKf) {
+                    const f = selectedKf.members[0];
+                    if (!f) return "linear";
+                    return (
+                      project.tracks
+                        .find((t) => t.elementId === f.elementId)
+                        ?.keyframes.find((k) => k.id === f.kfId)?.easing ?? "linear"
+                    );
+                  }
+                  return (
+                    project.tracks
+                      .find((t) => t.elementId === selectedKf.elementId)
+                      ?.keyframes.find((k) => k.id === selectedKf.kfId)?.easing ?? "linear"
+                  );
+                })()
               }
-              onChange={(e) =>
-                onSetEasing(
-                  selectedKf.elementId,
-                  selectedKf.kfId,
-                  e.target.value as EasingType,
-                )
-              }
+              onChange={(e) => {
+                const easing = e.target.value as EasingType;
+                if ("groupId" in selectedKf) {
+                  for (const m of selectedKf.members)
+                    onSetEasing(m.elementId, m.kfId, easing);
+                } else {
+                  onSetEasing(selectedKf.elementId, selectedKf.kfId, easing);
+                }
+              }}
             >
               {(Object.keys(EASING_LABELS) as EasingType[]).map((k) => (
                 <option key={k} value={k}>
