@@ -392,3 +392,41 @@
   align-items: center;
   gap: 6px;
 }
+
+/* 分层 / 全部层 模式开关（分段按钮） */
+.rec-mode {
+  display: inline-flex;
+  border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+  border-radius: var(--border-radius-md, 8px);
+  overflow: hidden;
+  flex: none;
+}
+
+.rec-mode-btn {
+  padding: 4px 10px;
+  border: none;
+  background: var(--color-background-primary, #fff);
+  font-size: 12px;
+  color: var(--color-text-secondary, #555);
+  cursor: pointer;
+}
+
+.rec-mode-btn + .rec-mode-btn {
+  border-left: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.15));
+}
+
+.rec-mode-btn.active {
+  background: #d85a30;
+  color: #fff;
+}
+
+.rec-mode-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 分层选区：只覆盖单个元素行（top/height 由内联样式给出） */
+.rec-sel.layer {
+  bottom: auto;
+  z-index: 3;
+}

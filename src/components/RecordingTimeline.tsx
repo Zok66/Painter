@@ -25,6 +25,9 @@ import "./RecordingTimeline.css";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** 与 CSS .rec-lane-row 的高度保持一致 */
+const LANE_ROW_HEIGHT = 26;
+
 type IconName =
   | "play"
   | "pause"
@@ -115,9 +118,9 @@ export interface RecordingTimelineProps {
   onClear: () => void;
   onClose: () => void;
   /** 删除所选时间区间，之后片段前移拼接 */
-  onDeleteRange: (t0: number, t1: number) => void;
+  onDeleteRange: (rowId: string | null, t0: number, t1: number) => void;
   /** 仅保留所选时间区间，区间外全丢弃 */
-  onKeepRange: (t0: number, t1: number) => void;
+  onKeepRange: (rowId: string | null, t0: number, t1: number) => void;
 }
 
 export default function RecordingTimeline(props: RecordingTimelineProps) {
@@ -145,6 +148,7 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
   } = props;
 
   const laneWrapRef = useRef<HTMLDivElement | null>(null);
+  const lanesRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
   useEffect(() => {
@@ -153,14 +157,18 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
 
   /** 剪辑模式：开启后 lane 上的拖拽变成「框选区间」而非移动播放头 */
   const [editing, setEditing] = useState(false);
-  /** 当前选中的时间区间（秒）；null = 未选 */
-  const [sel, setSel] = useState<{ t0: number; t1: number } | null>(null);
-  const selRef = useRef<{ t0: number; t1: number } | null>(null);
+  /** 选择模式：all=整段时间轴（跨所有层），layer=仅当前元素行 */
+  const [selectMode, setSelectMode] = useState<"all" | "layer">("all");
+  /** 当前选中的时间区间（秒）+ 关联元素行；null = 未选 */
+  const [sel, setSel] = useState<{ t0: number; t1: number; rowId?: string } | null>(null);
+  const selRef = useRef<{ t0: number; t1: number; rowId?: string } | null>(null);
   useEffect(() => {
     selRef.current = sel;
   }, [sel]);
   /** 框选起点（秒） */
   const selAnchorRef = useRef(0);
+  /** 框选起点所在的元素行 id（分层模式用） */
+  const selRowIdRef = useRef<string | undefined>(undefined);
   /** 当前拖拽在干啥：playhead=移动播放头，select=框选，t0/t1=拖选区把手 */
   const dragModeRef = useRef<"playhead" | "select" | "t0" | "t1">("playhead");
 
@@ -208,6 +216,22 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     [durationSec],
   );
 
+  /** 指针落在哪个元素行上（按 .rec-lanes 内容坐标算，含滚动）→ 行 id */
+  const rowIdFromClientY = useCallback(
+    (clientY: number): string | undefined => {
+      const el = lanesRef.current;
+      if (!el || !rows.length) return undefined;
+      const rect = el.getBoundingClientRect();
+      const idx = clamp(
+        Math.floor((clientY - rect.top + el.scrollTop) / LANE_ROW_HEIGHT),
+        0,
+        rows.length - 1,
+      );
+      return rows[idx]?.id;
+    },
+    [rows],
+  );
+
   // 拖拽：根据 dragMode 决定是移动播放头，还是框选 / 拖选区把手
   useEffect(() => {
     const move = (e: PointerEvent) => {
@@ -220,15 +244,20 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
       }
       if (mode === "select") {
         const a = selAnchorRef.current;
-        setSel({ t0: Math.min(a, t), t1: Math.max(a, t) });
+        const rowId = selRowIdRef.current;
+        setSel({
+          t0: Math.min(a, t),
+          t1: Math.max(a, t),
+          ...(rowId ? { rowId } : {}),
+        });
         return;
       }
       const cur = selRef.current;
       if (!cur) return;
       if (mode === "t0") {
-        setSel({ t0: clamp(t, 0, cur.t1 - 0.01), t1: cur.t1 });
+        setSel({ ...cur, t0: clamp(t, 0, cur.t1 - 0.01) });
       } else {
-        setSel({ t0: cur.t0, t1: clamp(t, cur.t0 + 0.01, durationSec) });
+        setSel({ ...cur, t1: clamp(t, cur.t0 + 0.01, durationSec) });
       }
     };
     const up = () => setDragging(false);
@@ -246,6 +275,33 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
       return !v;
     });
   };
+
+  /** 分层选区落在哪一行（-1 = 全层选区） */
+  const selRowIdx = sel?.rowId ? rows.findIndex((r) => r.id === sel.rowId) : -1;
+
+  /** 选区两端的拖拽把手（分层 / 全层共用） */
+  const selHandles = (
+    <>
+      <div
+        className="rec-sel-handle"
+        data-end="t0"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          setDragging(true);
+          dragModeRef.current = "t0";
+        }}
+      />
+      <div
+        className="rec-sel-handle"
+        data-end="t1"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          setDragging(true);
+          dragModeRef.current = "t1";
+        }}
+      />
+    </>
+  );
 
   return (
     <div className="rec-timeline">
@@ -412,10 +468,13 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
                 onPlayheadChange(tFromClientX(e.clientX));
                 return;
               }
-              // 剪辑模式：在空白处起手框选区间
+              // 剪辑模式：起手框选区间；分层模式锁定起始所在行
               const t = tFromClientX(e.clientX);
+              const rowId =
+                selectMode === "layer" ? rowIdFromClientY(e.clientY) : undefined;
               selAnchorRef.current = t;
-              setSel({ t0: t, t1: t });
+              selRowIdRef.current = rowId;
+              setSel({ t0: t, t1: t, ...(rowId ? { rowId } : {}) });
               setDragging(true);
               dragModeRef.current = "select";
             }}
@@ -427,7 +486,7 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
                 </span>
               ))}
             </div>
-            <div className="rec-lanes">
+            <div className="rec-lanes" ref={lanesRef}>
               {rows.map((row) => {
                 const end = row.endT ?? durationSec;
                 const w = Math.max(end - row.startT, 0.02);
@@ -454,30 +513,28 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
               {!hasData && !recording && (
                 <div className="rec-lane-empty">暂无录制</div>
               )}
+              {/* 分层选区：只覆盖当前元素行，随行滚动 */}
+              {editing && sel && selRowIdx >= 0 && (
+                <div
+                  className="rec-sel layer"
+                  style={{
+                    left: pct(sel.t0),
+                    width: pct(sel.t1 - sel.t0),
+                    top: selRowIdx * LANE_ROW_HEIGHT,
+                    height: LANE_ROW_HEIGHT,
+                  }}
+                >
+                  {selHandles}
+                </div>
+              )}
             </div>
-            {editing && sel && (
+            {/* 全层选区：覆盖整段时间轴 */}
+            {editing && sel && selRowIdx < 0 && (
               <div
                 className="rec-sel"
                 style={{ left: pct(sel.t0), width: pct(sel.t1 - sel.t0) }}
               >
-                <div
-                  className="rec-sel-handle"
-                  data-end="t0"
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    setDragging(true);
-                    dragModeRef.current = "t0";
-                  }}
-                />
-                <div
-                  className="rec-sel-handle"
-                  data-end="t1"
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    setDragging(true);
-                    dragModeRef.current = "t1";
-                  }}
-                />
+                {selHandles}
               </div>
             )}
             <div
@@ -490,8 +547,32 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
 
       {!collapsed && (
         <div className="rec-footer">
+          <div className="rec-mode" title="剪辑选区的作用范围">
+            <button
+              className={`rec-mode-btn${selectMode === "layer" ? " active" : ""}`}
+              disabled={recording || !hasData}
+              onClick={() => {
+                setSelectMode("layer");
+                setSel(null);
+              }}
+            >
+              分层
+            </button>
+            <button
+              className={`rec-mode-btn${selectMode === "all" ? " active" : ""}`}
+              disabled={recording || !hasData}
+              onClick={() => {
+                setSelectMode("all");
+                setSel(null);
+              }}
+            >
+              全部层
+            </button>
+          </div>
           <span className="rec-hint">
-            录制忠实重演画布变化：新增 / 修改 / 删除按真实时间轴回放
+            {selectMode === "layer"
+              ? "分层：在某个元素行内框选，剪辑只影响该层"
+              : "全部层：框选整段时间轴，剪辑影响所有元素"}
           </span>
           {summary && (
             <span className="rec-stats">
@@ -504,10 +585,14 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
                 className="rec-btn"
                 disabled={recording}
                 onClick={() => {
-                  onDeleteRange(sel.t0, sel.t1);
+                  onDeleteRange(sel.rowId ?? null, sel.t0, sel.t1);
                   setSel(null);
                 }}
-                title="删除所选时间段，之后的内容前移拼接"
+                title={
+                  sel.rowId
+                    ? "删除该层在所选时间段的内容，其他层不受影响"
+                    : "删除所选时间段，之后的内容前移拼接"
+                }
               >
                 删除所选片段
               </button>
@@ -515,10 +600,14 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
                 className="rec-btn"
                 disabled={recording}
                 onClick={() => {
-                  onKeepRange(sel.t0, sel.t1);
+                  onKeepRange(sel.rowId ?? null, sel.t0, sel.t1);
                   setSel(null);
                 }}
-                title="只保留所选时间段，区间外全部丢弃"
+                title={
+                  sel.rowId
+                    ? "该层只保留所选时间段的内容，其他层不受影响"
+                    : "只保留所选时间段，区间外全部丢弃"
+                }
               >
                 仅保留所选片段
               </button>

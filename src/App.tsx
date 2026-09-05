@@ -103,6 +103,8 @@ import {
   saveRecording,
   deleteRange,
   keepRange,
+  deleteElementRange,
+  keepElementRange,
   DEFAULT_REC_FPS,
   type RecProject,
 } from "./lib/recording";
@@ -1446,27 +1448,40 @@ export default function App() {
     else toast("录制太大没能存入本地，本次仍可播放与导出", "error");
   }, [stopRecTimers, commitRecProject, toast]);
 
-  /** 剪辑：删除所选时间区间，之后片段前移拼接 */
-  const handleRecDeleteRange = useCallback((t0: number, t1: number) => {
-    const cur = recProjectRef.current;
-    if (!cur) return;
-    stopRecPlayback();
-    const next = deleteRange(cur, t0, t1);
-    commitRecProject(next);
-    recPlayheadRef.current = 0;
-    setRecPlayheadT(0);
-  }, [stopRecPlayback, commitRecProject]);
+  /**
+   * 剪辑：删除所选时间区间。
+   * rowId 为 null → 全层剪辑（时间轴前移拼接）；否则只剪该元素（全局时间轴不动）。
+   */
+  const handleRecDeleteRange = useCallback(
+    (rowId: string | null, t0: number, t1: number) => {
+      const cur = recProjectRef.current;
+      if (!cur) return;
+      stopRecPlayback();
+      const next = rowId
+        ? deleteElementRange(cur, rowId, t0, t1)
+        : deleteRange(cur, t0, t1);
+      commitRecProject(next);
+      recPlayheadRef.current = 0;
+      setRecPlayheadT(0);
+    },
+    [stopRecPlayback, commitRecProject],
+  );
 
-  /** 剪辑：仅保留所选时间区间，区间外全部丢弃 */
-  const handleRecKeepRange = useCallback((t0: number, t1: number) => {
-    const cur = recProjectRef.current;
-    if (!cur) return;
-    stopRecPlayback();
-    const next = keepRange(cur, t0, t1);
-    commitRecProject(next);
-    recPlayheadRef.current = 0;
-    setRecPlayheadT(0);
-  }, [stopRecPlayback, commitRecProject]);
+  /** 剪辑：仅保留所选时间区间（分层时只作用于该元素） */
+  const handleRecKeepRange = useCallback(
+    (rowId: string | null, t0: number, t1: number) => {
+      const cur = recProjectRef.current;
+      if (!cur) return;
+      stopRecPlayback();
+      const next = rowId
+        ? keepElementRange(cur, rowId, t0, t1)
+        : keepRange(cur, t0, t1);
+      commitRecProject(next);
+      recPlayheadRef.current = 0;
+      setRecPlayheadT(0);
+    },
+    [stopRecPlayback, commitRecProject],
+  );
 
   // 定时器/effect 里的闭包容易过期，统一走 ref 取最新函数
   const stopRecordingRef = useRef(stopRecording);

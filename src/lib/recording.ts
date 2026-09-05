@@ -325,8 +325,13 @@ export function buildRecordSceneAtTime(
     }
   }
   const out: ExcalidrawElement[] = [];
-  for (const id of order) {
-    const el = map.get(id);
+  // order 里同一 id 可能出现多次（remove 后又 add，如撤销删除），
+  // 只按「最后一次插入」的位置输出一次，避免场景出现重复元素
+  const lastIdx = new Map<string, number>();
+  order.forEach((id, i) => lastIdx.set(id, i));
+  for (let i = 0; i < order.length; i++) {
+    if (lastIdx.get(order[i]) !== i) continue;
+    const el = map.get(order[i]);
     if (el) out.push({ ...el } as unknown as ExcalidrawElement);
   }
   return out;
@@ -484,6 +489,68 @@ export function keepRange(
     durationSec: Math.max(0.1, t1 - t0),
     events,
   };
+}
+
+// ── 按元素（分层）剪辑 ────────────────────────────────────
+//
+// 与全局剪辑的区别：只动目标元素自己的事件，**不移动全局时间轴**（其他元素不动）。
+// 元素在被剪区间内的「消失 / 续接」靠补 add/remove 锚点实现：
+//   删区间 [t0,t1]：区间前活着 → 补 remove@t0；区间后还活着 → 补 add@t1（取 t1 后状态）。
+//   留区间 [t0,t1]：区间前活着 → 补 add@t0（取 t0 前状态）；区间后还活着 → 补 remove@t1。
+
+/** 元素在「严格某时刻」的状态；不在场景里返回 null */
+function elementStateAtTime(
+  project: RecProject,
+  id: string,
+  t: number,
+): SerializedElement | null {
+  const scene = buildRecordSceneAtTime(project, t);
+  const el = scene.find((e) => e.id === id);
+  return el ? snapshotElement(el) : null;
+}
+
+/** 删除指定元素在 [t0, t1] 内的内容：该元素区间内消失，区间外原样（含跨区间续接） */
+export function deleteElementRange(
+  project: RecProject,
+  id: string,
+  t0: number,
+  t1: number,
+): RecProject {
+  if (!(t1 > t0)) return project;
+  const eps = 1e-6;
+  const before = elementStateAtTime(project, id, Math.max(0, t0 - eps));
+  const after = elementStateAtTime(project, id, t1 + eps);
+  // 只丢弃该元素落在区间内的事件，其他元素的事件原样保留
+  const kept = project.events.filter(
+    (e) => e.id !== id || e.t < t0 - eps || e.t > t1 + eps,
+  );
+  const extra: RecEvent[] = [];
+  if (before) extra.push({ t: t0, kind: "remove", id });
+  if (after) extra.push({ t: t1, kind: "add", id, el: after });
+  if (!extra.length) return { ...project, events: kept };
+  return { ...project, events: [...extra, ...kept].sort((a, b) => a.t - b.t) };
+}
+
+/** 只保留指定元素在 [t0, t1] 内的内容：该元素区间外消失，其他元素原样 */
+export function keepElementRange(
+  project: RecProject,
+  id: string,
+  t0: number,
+  t1: number,
+): RecProject {
+  if (!(t1 > t0)) return project;
+  const eps = 1e-6;
+  const before = elementStateAtTime(project, id, Math.max(0, t0 - eps));
+  const after = elementStateAtTime(project, id, t1 + eps);
+  // 其他元素的事件原样保留；目标元素只留区间内的事件
+  const kept = project.events.filter(
+    (e) => e.id !== id || (e.t >= t0 - eps && e.t <= t1 + eps),
+  );
+  const extra: RecEvent[] = [];
+  if (before) extra.push({ t: t0, kind: "add", id, el: before });
+  if (after) extra.push({ t: t1, kind: "remove", id });
+  if (!extra.length) return { ...project, events: kept };
+  return { ...project, events: [...extra, ...kept].sort((a, b) => a.t - b.t) };
 }
 
 // ── 存取（挂在笔记本页上，与关键帧工程同策略）──────────────
