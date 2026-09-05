@@ -1460,11 +1460,14 @@ export default function App() {
       const next = rowId
         ? deleteElementRange(cur, rowId, t0, t1)
         : deleteRange(cur, t0, t1);
+      if (rowId && next.events.length === cur.events.length) {
+        toast("该层在所选区间内没有内容，未做修改");
+      }
       commitRecProject(next);
       recPlayheadRef.current = 0;
       setRecPlayheadT(0);
     },
-    [stopRecPlayback, commitRecProject],
+    [stopRecPlayback, commitRecProject, toast],
   );
 
   /** 剪辑：仅保留所选时间区间（分层时只作用于该元素） */
@@ -1476,11 +1479,14 @@ export default function App() {
       const next = rowId
         ? keepElementRange(cur, rowId, t0, t1)
         : keepRange(cur, t0, t1);
+      if (rowId && next.events.length === cur.events.length) {
+        toast("该层在所选区间外没有内容，未做修改");
+      }
       commitRecProject(next);
       recPlayheadRef.current = 0;
       setRecPlayheadT(0);
     },
-    [stopRecPlayback, commitRecProject],
+    [stopRecPlayback, commitRecProject, toast],
   );
 
   // 定时器/effect 里的闭包容易过期，统一走 ref 取最新函数

@@ -216,17 +216,18 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     [durationSec],
   );
 
-  /** 指针落在哪个元素行上（按 .rec-lanes 内容坐标算，含滚动）→ 行 id */
+  /**
+   * 指针落在哪个元素行上（按 .rec-lanes 内容坐标算，含滚动）→ 行 id。
+   * 落在最后一行以下的空白处返回 undefined（分层模式下按整段时间轴处理）。
+   */
   const rowIdFromClientY = useCallback(
     (clientY: number): string | undefined => {
       const el = lanesRef.current;
       if (!el || !rows.length) return undefined;
       const rect = el.getBoundingClientRect();
-      const idx = clamp(
-        Math.floor((clientY - rect.top + el.scrollTop) / LANE_ROW_HEIGHT),
-        0,
-        rows.length - 1,
-      );
+      const idx = Math.floor((clientY - rect.top + el.scrollTop) / LANE_ROW_HEIGHT);
+      if (idx < 0) return rows[0]?.id;
+      if (idx >= rows.length) return undefined; // 空白处
       return rows[idx]?.id;
     },
     [rows],
@@ -571,7 +572,7 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
           </div>
           <span className="rec-hint">
             {selectMode === "layer"
-              ? "分层：在某个元素行内框选，剪辑只影响该层"
+              ? "分层：行内框选只影响该层；空白处框选=整段时间轴"
               : "全部层：框选整段时间轴，剪辑影响所有元素"}
           </span>
           {summary && (
