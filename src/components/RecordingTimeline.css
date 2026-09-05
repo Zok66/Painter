@@ -337,3 +337,58 @@
   color: var(--color-text-secondary, #555);
   font-variant-numeric: tabular-nums;
 }
+
+/* 剪辑激活态按钮 */
+.rec-btn.active {
+  background: #d85a30;
+  border-color: #d85a30;
+  color: #fff;
+}
+
+.rec-lane-wrap.editing {
+  cursor: crosshair;
+}
+
+/* 选中区间高亮：覆盖整列，两端有边界线 */
+.rec-sel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(216, 90, 48, 0.16);
+  border-left: 1.5px solid #d85a30;
+  border-right: 1.5px solid #d85a30;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* 选区两端把手：可拖拽调整区间 */
+.rec-sel-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  cursor: ew-resize;
+  background: linear-gradient(
+    to right,
+    transparent 3px,
+    #d85a30 3px,
+    #d85a30 6px,
+    transparent 6px
+  );
+}
+
+.rec-sel-handle[data-end="t0"] {
+  left: 0;
+}
+
+.rec-sel-handle[data-end="t1"] {
+  left: 100%;
+}
+
+.rec-sel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

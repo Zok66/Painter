@@ -114,6 +114,10 @@ export interface RecordingTimelineProps {
   onExportGif: (scale: number, background: boolean) => void;
   onClear: () => void;
   onClose: () => void;
+  /** 删除所选时间区间，之后片段前移拼接 */
+  onDeleteRange: (t0: number, t1: number) => void;
+  /** 仅保留所选时间区间，区间外全丢弃 */
+  onKeepRange: (t0: number, t1: number) => void;
 }
 
 export default function RecordingTimeline(props: RecordingTimelineProps) {
@@ -136,6 +140,8 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     onExportGif,
     onClear,
     onClose,
+    onDeleteRange,
+    onKeepRange,
   } = props;
 
   const laneWrapRef = useRef<HTMLDivElement | null>(null);
@@ -144,6 +150,19 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
   useEffect(() => {
     draggingRef.current = dragging;
   }, [dragging]);
+
+  /** 剪辑模式：开启后 lane 上的拖拽变成「框选区间」而非移动播放头 */
+  const [editing, setEditing] = useState(false);
+  /** 当前选中的时间区间（秒）；null = 未选 */
+  const [sel, setSel] = useState<{ t0: number; t1: number } | null>(null);
+  const selRef = useRef<{ t0: number; t1: number } | null>(null);
+  useEffect(() => {
+    selRef.current = sel;
+  }, [sel]);
+  /** 框选起点（秒） */
+  const selAnchorRef = useRef(0);
+  /** 当前拖拽在干啥：playhead=移动播放头，select=框选，t0/t1=拖选区把手 */
+  const dragModeRef = useRef<"playhead" | "select" | "t0" | "t1">("playhead");
 
   const [showExport, setShowExport] = useState(false);
   const [exportScale, setExportScale] = useState(1);
@@ -189,11 +208,28 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     [durationSec],
   );
 
-  // 拖动播放头：pointerdown 起手，移动跟手，抬起结束
+  // 拖拽：根据 dragMode 决定是移动播放头，还是框选 / 拖选区把手
   useEffect(() => {
     const move = (e: PointerEvent) => {
       if (!draggingRef.current) return;
-      onPlayheadChange(tFromClientX(e.clientX));
+      const mode = dragModeRef.current;
+      const t = tFromClientX(e.clientX);
+      if (mode === "playhead") {
+        onPlayheadChange(t);
+        return;
+      }
+      if (mode === "select") {
+        const a = selAnchorRef.current;
+        setSel({ t0: Math.min(a, t), t1: Math.max(a, t) });
+        return;
+      }
+      const cur = selRef.current;
+      if (!cur) return;
+      if (mode === "t0") {
+        setSel({ t0: clamp(t, 0, cur.t1 - 0.01), t1: cur.t1 });
+      } else {
+        setSel({ t0: cur.t0, t1: clamp(t, cur.t0 + 0.01, durationSec) });
+      }
     };
     const up = () => setDragging(false);
     window.addEventListener("pointermove", move);
@@ -202,7 +238,7 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
-  }, [onPlayheadChange, tFromClientX]);
+  }, [onPlayheadChange, tFromClientX, durationSec]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {
@@ -288,6 +324,17 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
             : "导出 GIF"}
         </button>
         <button
+          className={`rec-btn${editing ? " active" : ""}`}
+          disabled={recording || !hasData}
+          onClick={() => {
+            setEditing((v) => !v);
+            setSel(null);
+          }}
+          title={editing ? "退出剪辑模式" : "剪辑模式：在时间轴上拖选一段进行删除或保留"}
+        >
+          {editing ? "退出剪辑" : "剪辑"}
+        </button>
+        <button
           className="rec-collapse"
           onClick={toggleCollapsed}
           title={collapsed ? "展开详情" : "收起详情"}
@@ -355,12 +402,22 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
           </div>
 
           <div
-            className="rec-lane-wrap"
+            className={`rec-lane-wrap${editing ? " editing" : ""}`}
             ref={laneWrapRef}
             onPointerDown={(e) => {
               if (recording || !hasData) return;
+              if (!editing) {
+                setDragging(true);
+                dragModeRef.current = "playhead";
+                onPlayheadChange(tFromClientX(e.clientX));
+                return;
+              }
+              // 剪辑模式：在空白处起手框选区间
+              const t = tFromClientX(e.clientX);
+              selAnchorRef.current = t;
+              setSel({ t0: t, t1: t });
               setDragging(true);
-              onPlayheadChange(tFromClientX(e.clientX));
+              dragModeRef.current = "select";
             }}
           >
             <div className="rec-ruler">
@@ -398,6 +455,31 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
                 <div className="rec-lane-empty">暂无录制</div>
               )}
             </div>
+            {editing && sel && (
+              <div
+                className="rec-sel"
+                style={{ left: pct(sel.t0), width: pct(sel.t1 - sel.t0) }}
+              >
+                <div
+                  className="rec-sel-handle"
+                  data-end="t0"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    setDragging(true);
+                    dragModeRef.current = "t0";
+                  }}
+                />
+                <div
+                  className="rec-sel-handle"
+                  data-end="t1"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    setDragging(true);
+                    dragModeRef.current = "t1";
+                  }}
+                />
+              </div>
+            )}
             <div
               className="rec-playhead"
               style={{ left: pct(recording ? durationSec : playheadT) }}
@@ -414,6 +496,39 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
           {summary && (
             <span className="rec-stats">
               {summary.adds} 新增 · {summary.updates} 修改 · {summary.removes} 删除
+            </span>
+          )}
+          {editing && sel && sel.t1 > sel.t0 + 1e-4 && (
+            <span className="rec-sel-actions">
+              <button
+                className="rec-btn"
+                disabled={recording}
+                onClick={() => {
+                  onDeleteRange(sel.t0, sel.t1);
+                  setSel(null);
+                }}
+                title="删除所选时间段，之后的内容前移拼接"
+              >
+                删除所选片段
+              </button>
+              <button
+                className="rec-btn"
+                disabled={recording}
+                onClick={() => {
+                  onKeepRange(sel.t0, sel.t1);
+                  setSel(null);
+                }}
+                title="只保留所选时间段，区间外全部丢弃"
+              >
+                仅保留所选片段
+              </button>
+              <button
+                className="rec-btn ghost"
+                onClick={() => setSel(null)}
+                title="取消选择"
+              >
+                取消选择
+              </button>
             </span>
           )}
           {hasData && !recording && (

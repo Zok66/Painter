@@ -399,6 +399,93 @@ export function recordingSummary(project: RecProject): RecSummary {
   };
 }
 
+// ── 区间剪辑（选择片段删除 / 保留）─────────────────────────
+//
+// 两类操作都基于「删除一部分事件、把剩余事件的时间轴平移」，区别只是保留哪段：
+//   deleteRange：删掉 [t0, t1] 内的事件，t1 之后的事件整体左移 (t1-t0)。
+//   keepRange ：只留 [t0, t1] 内的事件，区间内的事件整体左移 t0。
+//
+// 平移后可能出现「元素的 add 被删了、但它在更晚的时刻还有 update/remove」的悬空引用
+// （典型：一笔横跨被剪区间）。这类元素在回放时会凭空消失，体验不对。
+// 解决：用被剪区间起点的场景做锚点，给这类孤儿子元素补一个 add，
+// 让它们从「区间前的状态」无缝续上。
+
+/** 给 ke 补上「悬空引用」元素的 add 锚点，保证回放连续 */
+function applyAnchorAdds(
+  project: RecProject,
+  kept: RecEvent[],
+  anchorT: number,
+  anchorAt: number,
+): RecEvent[] {
+  const before = buildRecordSceneAtTime(project, Math.max(0, anchorT) + 1e-4);
+  const beforeMap = new Map<string, ExcalidrawElement>();
+  for (const el of before) beforeMap.set(el.id, el);
+
+  const initialIds = new Set(project.initial.map((el) => el.id));
+  const addedIds = new Set<string>();
+  for (const e of kept) if (e.kind === "add") addedIds.add(e.id);
+
+  const needAdd = new Set<string>();
+  for (const e of kept) {
+    if (e.kind === "add") continue;
+    if (addedIds.has(e.id)) continue;
+    if (initialIds.has(e.id)) continue; // 基线里就有，不需要补
+    needAdd.add(e.id);
+  }
+
+  const extra: RecEvent[] = [];
+  for (const id of needAdd) {
+    const snap = beforeMap.get(id);
+    if (!snap) continue;
+    extra.push({ t: anchorAt, kind: "add", id, el: snapshotElement(snap) });
+  }
+  if (!extra.length) return kept;
+  return [...extra, ...kept].sort((a, b) => a.t - b.t);
+}
+
+/** 删除 [t0, t1] 时间区间内的所有事件，之后事件前移拼接 */
+export function deleteRange(
+  project: RecProject,
+  t0: number,
+  t1: number,
+): RecProject {
+  if (!(t1 > t0) || project.events.length === 0) return project;
+  const eps = 1e-6;
+  const shift = t1 - t0;
+  const kept: RecEvent[] = [];
+  for (const e of project.events) {
+    if (e.t >= t0 - eps && e.t <= t1 + eps) continue; // 落在被删区间
+    kept.push(e.t > t1 ? { ...e, t: e.t - shift } : { ...e });
+  }
+  const events = applyAnchorAdds(project, kept, t1, t0);
+  return {
+    ...project,
+    durationSec: Math.max(0.1, project.durationSec - shift),
+    events,
+  };
+}
+
+/** 只保留 [t0, t1] 区间内的事件，区间外全部丢弃，区间内事件前移使 t0→0 */
+export function keepRange(
+  project: RecProject,
+  t0: number,
+  t1: number,
+): RecProject {
+  if (!(t1 > t0) || project.events.length === 0) return project;
+  const eps = 1e-6;
+  const kept: RecEvent[] = [];
+  for (const e of project.events) {
+    if (e.t < t0 - eps || e.t > t1 + eps) continue; // 丢区间外
+    kept.push({ ...e, t: Math.max(0, e.t - t0) });
+  }
+  const events = applyAnchorAdds(project, kept, t0, 0);
+  return {
+    ...project,
+    durationSec: Math.max(0.1, t1 - t0),
+    events,
+  };
+}
+
 // ── 存取（挂在笔记本页上，与关键帧工程同策略）──────────────
 export function createRecording(fps: number): RecProject {
   return { version: 1, fps, durationSec: 0, initial: [], events: [] };

@@ -101,6 +101,8 @@ import {
   deleteRecording,
   loadRecording,
   saveRecording,
+  deleteRange,
+  keepRange,
   DEFAULT_REC_FPS,
   type RecProject,
 } from "./lib/recording";
@@ -1443,6 +1445,28 @@ export default function App() {
     if (ok) toast(`录制完成 · ${project.durationSec.toFixed(1)}s`);
     else toast("录制太大没能存入本地，本次仍可播放与导出", "error");
   }, [stopRecTimers, commitRecProject, toast]);
+
+  /** 剪辑：删除所选时间区间，之后片段前移拼接 */
+  const handleRecDeleteRange = useCallback((t0: number, t1: number) => {
+    const cur = recProjectRef.current;
+    if (!cur) return;
+    stopRecPlayback();
+    const next = deleteRange(cur, t0, t1);
+    commitRecProject(next);
+    recPlayheadRef.current = 0;
+    setRecPlayheadT(0);
+  }, [stopRecPlayback, commitRecProject]);
+
+  /** 剪辑：仅保留所选时间区间，区间外全部丢弃 */
+  const handleRecKeepRange = useCallback((t0: number, t1: number) => {
+    const cur = recProjectRef.current;
+    if (!cur) return;
+    stopRecPlayback();
+    const next = keepRange(cur, t0, t1);
+    commitRecProject(next);
+    recPlayheadRef.current = 0;
+    setRecPlayheadT(0);
+  }, [stopRecPlayback, commitRecProject]);
 
   // 定时器/effect 里的闭包容易过期，统一走 ref 取最新函数
   const stopRecordingRef = useRef(stopRecording);
@@ -2946,6 +2970,8 @@ export default function App() {
           onExportGif={handleRecExportGif}
           onClear={handleRecClear}
           onClose={handleToggleRec}
+          onDeleteRange={handleRecDeleteRange}
+          onKeepRange={handleRecKeepRange}
         />
       )}
       {/* SVG 导出前的背景选择弹窗：渲染在 .app 内，才能继承 .app 上的
