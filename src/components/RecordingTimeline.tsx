@@ -123,6 +123,8 @@ export interface RecordingTimelineProps {
   onKeepRange: (rowId: string | null, t0: number, t1: number) => void;
   /** 拖动时间条→平移整层：delta 秒，可正可负 */
   onShiftElement: (rowId: string, deltaT: number) => void;
+  /** 一键裁掉所有空白片段（段间空档压缩、掐首尾） */
+  onTrimBlank: () => void;
 }
 
 export default function RecordingTimeline(props: RecordingTimelineProps) {
@@ -148,6 +150,7 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     onDeleteRange,
     onKeepRange,
     onShiftElement,
+    onTrimBlank,
   } = props;
 
   const laneWrapRef = useRef<HTMLDivElement | null>(null);
@@ -680,6 +683,15 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
                 取消选择
               </button>
             </span>
+          )}
+          {hasData && !recording && (
+            <button
+              className="rec-btn"
+              onClick={onTrimBlank}
+              title="自动删除片段之间的空白（压缩为 0.2s），并掐掉开头/结尾的空白"
+            >
+              裁掉空白
+            </button>
           )}
           {hasData && !recording && (
             <button className="rec-btn ghost" onClick={onClear} title="删除这段录制">

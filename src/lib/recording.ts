@@ -572,6 +572,48 @@ export function shiftElement(
   return { ...project, events };
 }
 
+/**
+ * 自动裁掉空白片段：把事件聚类成「有效段」，段与段之间超过 pad 秒的空档
+ * 压缩为 pad（保留一点呼吸感），掐掉开头/结尾的空白。
+ * 纯时间映射——不丢任何事件，所以没有锚点/连续性问题。
+ */
+export function trimBlankSegments(project: RecProject, pad = 0.2): RecProject {
+  if (project.events.length === 0) return project;
+  const times = project.events.map((e) => e.t).sort((a, b) => a - b);
+  // 聚类：相邻事件间隔 > pad 即分段
+  const segs: Array<[number, number]> = [];
+  let segStart = times[0];
+  let prev = times[0];
+  for (let i = 1; i < times.length; i++) {
+    const t = times[i];
+    if (t - prev > pad) {
+      segs.push([segStart, prev]);
+      segStart = t;
+    }
+    prev = t;
+  }
+  segs.push([segStart, prev]);
+  // 时间映射：第 i 段整体左移 offset_i，段与段之间留 pad
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const [s, e] of segs) {
+    offsets.push(s - cursor);
+    cursor += e - s + pad;
+  }
+  // 裁后时长 = 累积游标减去最后一段多加的 pad（= 各段长度之和 + 段间垫片）
+  const events = project.events
+    .map((ev) => {
+      for (let i = segs.length - 1; i >= 0; i--) {
+        if (ev.t >= segs[i][0] - 1e-9) {
+          return { ...ev, t: Math.max(0, ev.t - offsets[i]) };
+        }
+      }
+      return { ...ev };
+    })
+    .sort((a, b) => a.t - b.t);
+  return { ...project, events, durationSec: Math.max(0.1, cursor - pad) };
+}
+
 // ── 存取（挂在笔记本页上，与关键帧工程同策略）──────────────
 export function createRecording(fps: number): RecProject {
   return { version: 1, fps, durationSec: 0, initial: [], events: [] };

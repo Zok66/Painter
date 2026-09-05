@@ -106,6 +106,7 @@ import {
   deleteElementRange,
   keepElementRange,
   shiftElement,
+  trimBlankSegments,
   DEFAULT_REC_FPS,
   type RecProject,
 } from "./lib/recording";
@@ -1509,6 +1510,22 @@ export default function App() {
     },
     [stopRecPlayback, commitRecProject],
   );
+
+  /** 一键裁掉空白片段：段间长空档压缩为 0.2s、掐首尾空白 */
+  const handleRecTrimBlank = useCallback(() => {
+    const cur = recProjectRef.current;
+    if (!cur) return;
+    stopRecPlayback();
+    const next = trimBlankSegments(cur);
+    if (next.durationSec >= cur.durationSec - 0.05) {
+      toast("没有可裁的空白片段");
+      return;
+    }
+    commitRecProject(next);
+    recPlayheadRef.current = 0;
+    setRecPlayheadT(0);
+    toast(`已裁掉空白 · ${cur.durationSec.toFixed(1)}s → ${next.durationSec.toFixed(1)}s`);
+  }, [stopRecPlayback, commitRecProject, toast]);
 
   // 定时器/effect 里的闭包容易过期，统一走 ref 取最新函数
   const stopRecordingRef = useRef(stopRecording);
@@ -3015,6 +3032,7 @@ export default function App() {
           onDeleteRange={handleRecDeleteRange}
           onKeepRange={handleRecKeepRange}
           onShiftElement={handleRecShiftElement}
+          onTrimBlank={handleRecTrimBlank}
         />
       )}
       {/* SVG 导出前的背景选择弹窗：渲染在 .app 内，才能继承 .app 上的
