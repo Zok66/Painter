@@ -1,6 +1,6 @@
-// 帧动画导出 GIF（关键帧补间版）
+// 帧序列导出 GIF（关键帧补间 / 画布录制 共用）
 //
-// 流程：按时间逐帧 buildSceneAtTime 采样 → 算所有输出帧的并集包围盒 →
+// 流程：按时间逐帧调用 buildScene(t) 采样 → 算所有输出帧的并集包围盒 →
 // 把每帧对齐到统一画布 → gifenc 量化编码。
 //
 // 两个坑（与逐帧版一致）：
@@ -18,10 +18,10 @@ import { getPaperTemplate, setPaperTemplate } from "./paperTexture";
 import { stripOnionElements } from "./onionSkin";
 import { buildSceneAtTime, type AnimProject } from "./keyframeAnim";
 
-export interface GifExportOptions {
-  project: AnimProject;
-  /** 基准场景（用户编辑的画布元素） */
-  baseElements: readonly ExcalidrawElement[];
+/** 通用帧序列导出参数：由调用方给出「某时刻的元素列表」 */
+export interface SceneSequenceExportOptions {
+  /** 采样某时刻的场景（关键帧动画 = 插值，录制 = 事件重放） */
+  buildScene: (t: number) => ExcalidrawElement[];
   files: BinaryFiles;
   fps: number;
   /** 总时长（秒） */
@@ -34,12 +34,25 @@ export interface GifExportOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
+/** 关键帧动画导出参数（内部转成通用帧序列） */
+export interface GifExportOptions {
+  project: AnimProject;
+  /** 基准场景（用户编辑的画布元素） */
+  baseElements: readonly ExcalidrawElement[];
+  files: BinaryFiles;
+  fps: number;
+  durationSec: number;
+  scale: number;
+  background: boolean;
+  backgroundColor: string;
+  onProgress?: (done: number, total: number) => void;
+}
+
 /** 导出时留的白边（场景坐标） */
 const PADDING = 8;
 
 function globalBounds(
-  project: AnimProject,
-  baseElements: readonly ExcalidrawElement[],
+  buildScene: (t: number) => ExcalidrawElement[],
   total: number,
   fps: number,
 ) {
@@ -49,7 +62,7 @@ function globalBounds(
   let maxY = -Infinity;
   for (let i = 0; i < total; i++) {
     const t = i / fps;
-    const els = stripOnionElements(buildSceneAtTime(project, baseElements, t));
+    const els = stripOnionElements(buildScene(t));
     if (!els.length) continue;
     const [x1, y1, x2, y2] = getCommonBounds(
       els as unknown as Parameters<typeof getCommonBounds>[0],
@@ -63,9 +76,12 @@ function globalBounds(
   return [minX, minY, maxX, maxY] as const;
 }
 
-export async function exportAnimationToGif({
-  project,
-  baseElements,
+/**
+ * 通用帧序列导出：调用方用 buildScene(t) 描述「t 时刻画布长什么样」，
+ * 关键帧动画（插值）与画布录制（事件重放）共用这一条编码链路。
+ */
+export async function exportSceneSequenceToGif({
+  buildScene,
   files,
   fps,
   durationSec,
@@ -73,15 +89,10 @@ export async function exportAnimationToGif({
   background,
   backgroundColor,
   onProgress,
-}: GifExportOptions): Promise<Blob> {
+}: SceneSequenceExportOptions): Promise<Blob> {
   const safeScale = Math.max(0.5, Math.min(4, scale || 1));
   const total = Math.max(1, Math.round(durationSec * fps));
-  const [gMinX, gMinY, gMaxX, gMaxY] = globalBounds(
-    project,
-    baseElements,
-    total,
-    fps,
-  );
+  const [gMinX, gMinY, gMaxX, gMaxY] = globalBounds(buildScene, total, fps);
   const width = Math.max(1, Math.round((gMaxX - gMinX + PADDING * 2) * safeScale));
   const height = Math.max(1, Math.round((gMaxY - gMinY + PADDING * 2) * safeScale));
 
@@ -101,7 +112,7 @@ export async function exportAnimationToGif({
   try {
     for (let i = 0; i < total; i++) {
       const t = i / fps;
-      const els = stripOnionElements(buildSceneAtTime(project, baseElements, t));
+      const els = stripOnionElements(buildScene(t));
       ctx.clearRect(0, 0, width, height);
 
       if (els.length) {
@@ -162,6 +173,18 @@ export async function exportAnimationToGif({
   gif.finish();
   const bytes = gif.bytes();
   return new Blob([bytes as unknown as BlobPart], { type: "image/gif" });
+}
+
+/** 关键帧动画导出：把 buildSceneAtTime 包成通用帧序列 */
+export async function exportAnimationToGif(
+  opts: GifExportOptions,
+): Promise<Blob> {
+  const { project, baseElements, ...rest } = opts;
+  return exportSceneSequenceToGif({
+    ...rest,
+    buildScene: (t) =>
+      buildSceneAtTime(project, baseElements, t) as ExcalidrawElement[],
+  });
 }
 
 export function downloadBlob(blob: Blob, filename: string) {

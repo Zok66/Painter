@@ -76,6 +76,7 @@ import {
 import NotebookPanel from "./components/NotebookPanel";
 import ExportSvgDialog from "./components/ExportSvgDialog";
 import AnimationTimeline from "./components/AnimationTimeline";
+import RecordingTimeline from "./components/RecordingTimeline";
 import {
   applyProps,
   buildSceneAtTime,
@@ -95,11 +96,24 @@ import {
   type EasingType,
 } from "./lib/keyframeAnim";
 import {
+  CanvasRecorder,
+  buildRecordSceneAtTime,
+  deleteRecording,
+  loadRecording,
+  saveRecording,
+  DEFAULT_REC_FPS,
+  type RecProject,
+} from "./lib/recording";
+import {
   composeSceneWithOnion,
   stripOnionElements,
   type OnionConfig,
 } from "./lib/onionSkin";
-import { downloadBlob, exportAnimationToGif } from "./lib/gifExport";
+import {
+  downloadBlob,
+  exportAnimationToGif,
+  exportSceneSequenceToGif,
+} from "./lib/gifExport";
 import type { Point } from "./lib/shapeRecognition";
 import { installPainterTextFormat, painterMeasureText } from "./lib/textFormat";
 import type {
@@ -347,6 +361,54 @@ export default function App() {
   // 都会刷新它，真正录到关键帧的那次 onChange 才把它压入撤销栈（一次拖拽只压一个步）。
   const pendingUndoSnapRef = useRef<DocSnapshot | null>(null);
   const pendingUndoConsumedRef = useRef(false);
+  // ── 画布录制（过程回放 · 录屏式）─────────────────────────────
+  // 与关键帧动画并列、互斥的第二种动画：录制期间按 fps 采样画布 diff 成事件流，
+  // 回放时从基线场景重放事件，把「画了什么、什么时候删的」按真实时间轴重演。
+  const [recProject, setRecProject] = useState<RecProject | null>(null);
+  const recProjectRef = useRef<RecProject | null>(null);
+  const [recOpen, setRecOpen] = useState(false);
+  const [recRecording, setRecRecording] = useState(false);
+  const [recPlaying, setRecPlaying] = useState(false);
+  /** 采样帧率（录制前可调，录制中锁定） */
+  const [recFps, setRecFps] = useState<number>(DEFAULT_REC_FPS);
+  /** 回放倍速（只影响播放，不影响导出） */
+  const [recSpeed, setRecSpeed] = useState(1);
+  /** 录制中的实时秒数（project 还没生成时靠它显示时长） */
+  const [recSeconds, setRecSeconds] = useState(0);
+  const [recPlayheadT, setRecPlayheadT] = useState(0);
+  const recPlayheadRef = useRef(0);
+  const recOpenRef = useRef(false);
+  const recRecordingRef = useRef(false);
+  const recPlayingRef = useRef(false);
+  const recSpeedRef = useRef(1);
+  const recFpsRef = useRef(DEFAULT_REC_FPS);
+  /** 采样器实例（录制中非空） */
+  const recorderRef = useRef<CanvasRecorder | null>(null);
+  /** 采样定时器 / 时长刷新定时器 / 播放定时器 */
+  const recSampleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recUiTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recStartAtRef = useRef(0);
+  /** 上次采样时刻（ms）：定时采样按 fps 走，onChange 补采要节流，避免 pointermove 把事件数灌爆 */
+  const recLastSampleAtRef = useRef(0);
+  /** 进入面板时的画布内容，关闭面板时还原（回放期改动画布不该写进页面） */
+  const recRestoreElsRef = useRef<ExcalidrawElement[] | null>(null);
+  // ref 镜像：录制回调 / 定时器里读的是 ref，避免闭包拿到过期的 state
+  useEffect(() => {
+    recOpenRef.current = recOpen;
+  }, [recOpen]);
+  useEffect(() => {
+    recRecordingRef.current = recRecording;
+  }, [recRecording]);
+  useEffect(() => {
+    recPlayingRef.current = recPlaying;
+  }, [recPlaying]);
+  useEffect(() => {
+    recSpeedRef.current = recSpeed;
+  }, [recSpeed]);
+  useEffect(() => {
+    recFpsRef.current = recFps;
+  }, [recFps]);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ done: 0, total: 0 });
@@ -452,6 +514,20 @@ export default function App() {
       }
       if (fillActive && !isFillTool(appState.activeTool)) {
         setFillActive(false);
+      }
+      // ── 录制补采 ──────────────────────────────────────────
+      // 定时采样按 fps 走，中间会漏掉 Excalidraw 在 pointerup / 删除之后做的
+      // 异步归一化（freedraw 的 simplify 会重写 points）。漏了就会「回放末态 ≠ 用户画布」。
+      // 这里借 onChange 补一次采样，并用 15ms 节流防止 pointermove 把事件数灌爆。
+      if (recRecordingRef.current && recorderRef.current) {
+        const now = performance.now();
+        if (now - recLastSampleAtRef.current >= 15) {
+          recLastSampleAtRef.current = now;
+          recorderRef.current.sample(
+            elements,
+            (now - recStartAtRef.current) / 1000,
+          );
+        }
       }
       // 画布上删除了元素 → 同步清理它在动画工程里的轨道与基准场景，
       // 避免「物体都删了，动画面板数据还在」。否则被删元素会在拖时间条/播放时重新冒出来。
@@ -615,6 +691,9 @@ export default function App() {
       debounceRef.current = setTimeout(() => {
         // 播放中 updateScene 也会触发 onChange，但那不是编辑内容，不能落盘
         if (animPlayingRef.current) return;
+        // 录制面板打开且不在录制时，画布上铺的是「回放中间态」，不是用户内容；
+        // 落盘会把页面数据写成回放的某一帧（用户真实内容丢失），故一律跳过。
+        if (recOpenRef.current && !recRecordingRef.current) return;
         try {
           // 剥掉洋葱皮幽灵再落盘：幽灵是临时参考物，不能混进页快照和帧快照
           const json = serializeAsJSON(
@@ -1249,6 +1328,335 @@ export default function App() {
     selectedElementIdRef.current = null;
     requestAnimationFrame(() => applyProjectToCanvas(0));
   }, [animOpen, stopPlayback, captureBaseScene, applyProjectToCanvas]);
+
+  // —— 画布录制（过程回放 · 录屏式）——
+  // 与关键帧动画互斥：两者都要接管底部面板并按需重铺画布，同时开会互相打架。
+  // 数据同样挂在「当前笔记本页」上，切页即换整份录制。
+
+  /** 工程落地：同步 ref/state + 存盘（null = 删掉这段录制） */
+  const commitRecProject = useCallback((p: RecProject | null) => {
+    recProjectRef.current = p;
+    setRecProject(p);
+    const pageId = notebookStateRef.current.activePageId;
+    if (p) saveRecording(pageId, p);
+    else deleteRecording(pageId);
+  }, []);
+
+  /** 把 t 时刻的录制场景重放到画布 */
+  const applyRecScene = useCallback((t: number) => {
+    const p = recProjectRef.current;
+    const api = excalidrawAPIRef.current;
+    if (!p || !api) return;
+    api.updateScene({
+      elements: buildRecordSceneAtTime(p, t),
+      captureUpdate: CaptureUpdateAction.EVENTUALLY,
+    });
+  }, []);
+
+  /** 停回放（停在当前帧，不重铺） */
+  const stopRecPlayback = useCallback(() => {
+    if (recPlayTimerRef.current) {
+      clearTimeout(recPlayTimerRef.current);
+      recPlayTimerRef.current = null;
+    }
+    recPlayingRef.current = false;
+    setRecPlaying(false);
+  }, []);
+
+  /** 回放：按录制 fps × 倍速逐帧重放事件。播完停在末帧（= 录制结束时的画布） */
+  const startRecPlayback = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    const p = recProjectRef.current;
+    if (!api || !p || p.events.length === 0) return;
+    const fps = Math.max(1, p.fps);
+    const total = Math.max(1, Math.round(p.durationSec * fps));
+    const perFrameMs = 1000 / (fps * Math.max(0.25, recSpeedRef.current));
+    setRecPlaying(true);
+    recPlayingRef.current = true;
+    let i = 0;
+    const step = () => {
+      if (!recPlayingRef.current) return;
+      if (i > total) {
+        stopRecPlayback();
+        recPlayheadRef.current = p.durationSec;
+        setRecPlayheadT(p.durationSec);
+        applyRecScene(p.durationSec);
+        return;
+      }
+      const t = i / fps;
+      applyRecScene(t);
+      recPlayheadRef.current = t;
+      setRecPlayheadT(t);
+      i += 1;
+      recPlayTimerRef.current = setTimeout(step, perFrameMs);
+    };
+    step();
+  }, [stopRecPlayback, applyRecScene]);
+
+  const handleToggleRecPlay = useCallback(() => {
+    if (recPlayingRef.current) {
+      stopRecPlayback();
+      return;
+    }
+    startRecPlayback();
+  }, [stopRecPlayback, startRecPlayback]);
+
+  /** 收掉采样 / 计时的 interval */
+  const stopRecTimers = useCallback(() => {
+    if (recSampleTimerRef.current) {
+      clearInterval(recSampleTimerRef.current);
+      recSampleTimerRef.current = null;
+    }
+    if (recUiTimerRef.current) {
+      clearInterval(recUiTimerRef.current);
+      recUiTimerRef.current = null;
+    }
+  }, []);
+
+  /** 停止录制：收采样、生成工程、存盘、播放头落到末尾 */
+  const stopRecording = useCallback(() => {
+    stopRecTimers();
+    const rec = recorderRef.current;
+    recRecordingRef.current = false;
+    setRecRecording(false);
+    recorderRef.current = null;
+    if (!rec) return;
+    const duration = (performance.now() - recStartAtRef.current) / 1000;
+    // 收尾再采一次：把「停止这一刻」的画布状态钉死，
+    // 否则最后一次定时采样之后的任何变化（含 Excalidraw 的收尾归一化）都不会进工程，
+    // 回放播完会和用户的画布差一点点。
+    const api = excalidrawAPIRef.current;
+    if (api) rec.sample(api.getSceneElements() as ExcalidrawElement[], duration);
+    const project = rec.finish(duration);
+    if (project.events.length === 0) {
+      commitRecProject(null);
+      setRecSeconds(0);
+      toast("这段时间画布没有变化，未生成录制", "error");
+      return;
+    }
+    const pageId = notebookStateRef.current.activePageId;
+    const ok = saveRecording(pageId, project);
+    recProjectRef.current = project;
+    setRecProject(project);
+    recPlayheadRef.current = project.durationSec;
+    setRecPlayheadT(project.durationSec);
+    if (ok) toast(`录制完成 · ${project.durationSec.toFixed(1)}s`);
+    else toast("录制太大没能存入本地，本次仍可播放与导出", "error");
+  }, [stopRecTimers, commitRecProject, toast]);
+
+  // 定时器/effect 里的闭包容易过期，统一走 ref 取最新函数
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
+  const stopRecPlaybackRef = useRef(stopRecPlayback);
+  stopRecPlaybackRef.current = stopRecPlayback;
+
+  /**
+   * 开始录制：抓取当前画布作为基线场景，之后按 fps 采样 diff。
+   * 采样的定时器只做「读场景 → 记差异」，不碰画布，不会打断用户作画。
+   */
+  const startRecording = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
+    stopRecPlayback();
+    const els = api.getSceneElements() as ExcalidrawElement[];
+    // 进面板时已存过一次快照，这里兜底，保证关闭面板一定能还原
+    if (!recRestoreElsRef.current) {
+      recRestoreElsRef.current = els.map((e) => ({ ...e }));
+    }
+    const fps = recFpsRef.current;
+    recorderRef.current = new CanvasRecorder({ fps, elements: els });
+    recStartAtRef.current = performance.now();
+    recProjectRef.current = null;
+    setRecProject(null);
+    deleteRecording(notebookStateRef.current.activePageId);
+    recPlayheadRef.current = 0;
+    setRecPlayheadT(0);
+    setRecSeconds(0);
+    setRecRecording(true);
+    recRecordingRef.current = true;
+
+    stopRecTimers();
+    recSampleTimerRef.current = setInterval(
+      () => {
+        const rec = recorderRef.current;
+        const apiNow = excalidrawAPIRef.current;
+        if (!rec || !apiNow) return;
+        const now = performance.now();
+        recLastSampleAtRef.current = now;
+        const t = (now - recStartAtRef.current) / 1000;
+        rec.sample(apiNow.getSceneElements() as ExcalidrawElement[], t);
+        if (rec.limitReached) {
+          stopRecordingRef.current();
+          toast("已达录制上限，自动停止", "error");
+        }
+      },
+      Math.max(16, Math.round(1000 / fps)),
+    );
+    // 时长显示不必跟到采样帧率，200ms 刷新足够且省掉大量重渲染
+    recUiTimerRef.current = setInterval(() => {
+      setRecSeconds((performance.now() - recStartAtRef.current) / 1000);
+    }, 200);
+    toast("开始录制：每一笔、每次增删都会按时间记下来");
+  }, [stopRecPlayback, stopRecTimers, toast]);
+
+  /** 录制中拖播放头 / 播放：无意义，直接忽略 */
+  const handleRecPlayheadChange = useCallback(
+    (t: number) => {
+      if (recRecordingRef.current || recPlayingRef.current) return;
+      const p = recProjectRef.current;
+      if (!p) return;
+      const tt = Math.max(0, Math.min(t, p.durationSec));
+      recPlayheadRef.current = tt;
+      setRecPlayheadT(tt);
+      applyRecScene(tt);
+    },
+    [applyRecScene],
+  );
+
+  const handleRecExportGif = useCallback(
+    async (scale: number, background: boolean) => {
+      const api = excalidrawAPIRef.current;
+      const p = recProjectRef.current;
+      if (!api || !p || p.events.length === 0) {
+        toast("没有可导出的录制", "error");
+        return;
+      }
+      const total = Math.max(1, Math.round(p.durationSec * p.fps));
+      setExporting(true);
+      setExportProgress({ done: 0, total });
+      try {
+        const blob = await exportSceneSequenceToGif({
+          buildScene: (t) => buildRecordSceneAtTime(p, t),
+          files: api.getFiles(),
+          fps: p.fps,
+          durationSec: p.durationSec,
+          scale,
+          background,
+          backgroundColor: api.getAppState().viewBackgroundColor || "#ffffff",
+          onProgress: (done, totalN) => setExportProgress({ done, total: totalN }),
+        });
+        downloadBlob(blob, stamp("recording", "gif"));
+        toast(`已导出 GIF（${total} 帧）`);
+      } catch (err) {
+        console.error(err);
+        toast("导出 GIF 失败", "error");
+      } finally {
+        setExporting(false);
+      }
+    },
+    [toast],
+  );
+
+  /** 删除这段录制：画布还原成进面板前的样子 */
+  const handleRecClear = useCallback(() => {
+    stopRecPlayback();
+    const api = excalidrawAPIRef.current;
+    if (api && recRestoreElsRef.current) {
+      api.updateScene({
+        elements: recRestoreElsRef.current,
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      api.refresh();
+    }
+    commitRecProject(null);
+    recPlayheadRef.current = 0;
+    setRecPlayheadT(0);
+    setRecSeconds(0);
+    toast("已删除这段录制");
+  }, [stopRecPlayback, commitRecProject, toast]);
+
+  /**
+   * 开关录制面板。
+   * 关闭：停录制 + 停回放 + 把画布还原成进面板前的内容（回放期改的是临时画面）。
+   * 打开：这一页没录过就直接开始录；录过就进回放态（播放头停在末尾）。
+   */
+  const handleToggleRec = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    if (recOpenRef.current) {
+      if (recRecordingRef.current) stopRecording();
+      stopRecPlayback();
+      if (api && recRestoreElsRef.current) {
+        api.updateScene({
+          elements: recRestoreElsRef.current,
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+        });
+        api.refresh();
+      }
+      recRestoreElsRef.current = null;
+      setRecOpen(false);
+      refocusCanvas();
+      return;
+    }
+    if (!api) return;
+    if (animOpenRef.current) handleToggleAnim();
+    recRestoreElsRef.current = (api.getSceneElements() as ExcalidrawElement[]).map(
+      (e) => ({ ...e }),
+    );
+    setRecOpen(true);
+    const saved = loadRecording(notebookStateRef.current.activePageId);
+    if (saved && saved.events.length > 0) {
+      recProjectRef.current = saved;
+      setRecProject(saved);
+      recPlayheadRef.current = saved.durationSec;
+      setRecPlayheadT(saved.durationSec);
+      return;
+    }
+    setRecProject(null);
+    recProjectRef.current = null;
+    setRecPlayheadT(0);
+    recPlayheadRef.current = 0;
+    startRecording();
+  }, [
+    stopRecording,
+    stopRecPlayback,
+    startRecording,
+    handleToggleAnim,
+  ]);
+
+  // 切页：录制与页绑定，切页就停录制、收回放态、载入新页的录制数据
+  useEffect(() => {
+    const pageId = notebookState.activePageId;
+    if (recRecordingRef.current) stopRecordingRef.current();
+    stopRecPlaybackRef.current();
+    const saved = loadRecording(pageId);
+    const next = saved && saved.events.length > 0 ? saved : null;
+    recProjectRef.current = next;
+    setRecProject(next);
+    const t = next?.durationSec ?? 0;
+    recPlayheadRef.current = t;
+    setRecPlayheadT(t);
+  }, [notebookState.activePageId]);
+
+  // 卸载时收掉所有录制相关定时器
+  useEffect(
+    () => () => {
+      stopRecTimers();
+      if (recPlayTimerRef.current) clearTimeout(recPlayTimerRef.current);
+    },
+    [stopRecTimers],
+  );
+
+  // 录制面板打开时：空格 = 播放 / 暂停回放（录制中不抢空格，留给画布平移）
+  useEffect(() => {
+    if (!recOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.code === "Space" && !recRecordingRef.current) {
+        e.preventDefault();
+        handleToggleRecPlay();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [recOpen, handleToggleRecPlay]);
 
   // 面板打开时：空格播放 / 停止，逗号句号前后挪播放头
   useEffect(() => {
@@ -2300,9 +2708,11 @@ export default function App() {
       onToggleNotebook: handleToggleNotebook,
       animOpen,
       onToggleAnim: handleToggleAnim,
+      recOpen,
+      onToggleRec: handleToggleRec,
       isDark,
     }),
-    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, handleSelectPen, activePen, handleFillBucket, fillActive, fillKind, handleFillKindChange, notebookOpen, handleToggleNotebook, animOpen, handleToggleAnim, isDark],
+    [handleNew, handleOpen, handleSave, handleExportPng, handleExportSvg, handleClear, handleToggleTheme, handleSmartShape, smartShapeActive, handleSelectPen, activePen, handleFillBucket, fillActive, fillKind, handleFillKindChange, notebookOpen, handleToggleNotebook, animOpen, handleToggleAnim, recOpen, handleToggleRec, isDark],
   );
 
   // 把属性面板挂到项目自有的 .workspace 容器（绝对定位浮层），
@@ -2513,6 +2923,29 @@ export default function App() {
           exporting={exporting}
           exportProgress={exportProgress}
           onClose={handleToggleAnim}
+        />
+      )}
+      {/* 录制时间轴：与动画时间轴同样横跨底部，两者互斥（工具栏按钮互斥切换） */}
+      {recOpen && (
+        <RecordingTimeline
+          project={recProject}
+          recording={recRecording}
+          recSeconds={recSeconds}
+          playheadT={recPlayheadT}
+          playing={recPlaying}
+          fps={recFps}
+          speed={recSpeed}
+          exporting={exporting}
+          exportProgress={exportProgress}
+          onStart={startRecording}
+          onStop={stopRecording}
+          onPlayToggle={handleToggleRecPlay}
+          onPlayheadChange={handleRecPlayheadChange}
+          onFpsChange={setRecFps}
+          onSpeedChange={setRecSpeed}
+          onExportGif={handleRecExportGif}
+          onClear={handleRecClear}
+          onClose={handleToggleRec}
         />
       )}
       {/* SVG 导出前的背景选择弹窗：渲染在 .app 内，才能继承 .app 上的

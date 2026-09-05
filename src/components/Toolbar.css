@@ -169,6 +169,40 @@
 .anim-text {
   line-height: 1;
 }
+
+/* —— 画布录制入口：与笔记本 / 动画按钮同一形态，激活用红调（录制语义） —— */
+.btn-rec {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.rec-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+  flex: 0 0 auto;
+}
+
+.rec-text {
+  line-height: 1;
+}
+
+.btn-rec.active {
+  background: rgba(209, 75, 63, 0.14);
+  border-color: rgba(209, 75, 63, 0.65);
+  color: #a32d2d;
+  box-shadow: 0 0 0 2px rgba(209, 75, 63, 0.18);
+}
+
+.btn-rec.active:hover:not(:disabled) {
+  background: rgba(209, 75, 63, 0.2);
+  border-color: rgba(209, 75, 63, 0.85);
+}
 .btn-smartshape {
   display: inline-flex;
   align-items: center;

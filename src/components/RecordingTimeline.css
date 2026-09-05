@@ -1,0 +1,339 @@
+/* 画布录制时间轴（过程回放）—— 风格与关键帧时间轴保持一致 */
+
+.rec-timeline {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 12px;
+  width: min(960px, calc(100vw - 32px));
+  background: var(--color-background-primary, #fff);
+  border: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.15));
+  border-radius: var(--border-radius-lg, 12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+  color: var(--color-text-primary, #1a1a1a);
+  z-index: 30;
+  overflow: hidden;
+  user-select: none;
+}
+
+.rec-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.12));
+}
+
+.rec-timeline svg {
+  display: block;
+  flex: none;
+}
+
+.rec-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+  border-radius: var(--border-radius-md, 8px);
+  background: var(--color-background-primary, #fff);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-primary, #1a1a1a);
+}
+
+.rec-btn:hover:not(:disabled) {
+  background: var(--color-background-secondary, #f3f2ee);
+}
+
+.rec-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rec-btn.ghost {
+  margin-left: auto;
+  padding: 5px 8px;
+}
+
+/* 录制按钮：红点 + 红边，录制中变实心停止态 */
+.rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #d14b3f;
+  flex: none;
+}
+
+.rec-dot.live {
+  animation: rec-blink 1s steps(2, start) infinite;
+}
+
+@keyframes rec-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.rec-btn.rec-start {
+  border-color: rgba(209, 75, 63, 0.55);
+  color: #a32d2d;
+}
+
+.rec-btn.rec-stop {
+  background: #d14b3f;
+  border-color: #d14b3f;
+  color: #fff;
+}
+
+.rec-btn.rec-stop .rec-dot {
+  background: #fff;
+  border-radius: 2px;
+}
+
+.rec-play {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--border-radius-md, 8px);
+  border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+  background: var(--color-background-secondary, #f3f2ee);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rec-play:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rec-collapse {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--border-radius-md, 8px);
+  border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+  background: var(--color-background-secondary, #f3f2ee);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary, #555);
+  padding: 0;
+}
+
+.rec-collapse:hover {
+  background: var(--color-background-tertiary, #e8e7e3);
+}
+
+.rec-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary, #555);
+  min-width: 108px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rec-time-live {
+  color: #a32d2d;
+}
+
+.rec-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-secondary, #555);
+}
+
+.rec-field select {
+  padding: 3px 6px;
+  border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--color-background-primary, #fff);
+  color: var(--color-text-primary, #1a1a1a);
+}
+
+.rec-field select:disabled {
+  opacity: 0.5;
+}
+
+.rec-export {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 12px;
+  border-bottom: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.12));
+  font-size: 12px;
+  color: var(--color-text-secondary, #555);
+}
+
+.rec-export label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rec-export select {
+  padding: 2px 5px;
+  border: 0.5px solid var(--color-border-secondary, rgba(0, 0, 0, 0.3));
+  border-radius: 6px;
+}
+
+.rec-body {
+  display: flex;
+  height: 188px;
+}
+
+.rec-list {
+  width: 184px;
+  flex: none;
+  border-right: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.12));
+  overflow-y: auto;
+}
+
+.rec-list-head {
+  height: 22px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-text-tertiary, #999);
+  border-bottom: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.12));
+  background: var(--color-background-secondary, #f3f2ee);
+}
+
+.rec-empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--color-text-tertiary, #999);
+  line-height: 1.6;
+}
+
+.rec-list-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border-bottom: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.08));
+}
+
+.rec-list-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rec-list-range {
+  font-size: 11px;
+  color: var(--color-text-tertiary, #999);
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-lane-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.rec-ruler {
+  position: relative;
+  height: 22px;
+  border-bottom: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.12));
+  background: var(--color-background-secondary, #f3f2ee);
+}
+
+.rec-tick {
+  position: absolute;
+  top: 3px;
+  font-size: 10px;
+  color: var(--color-text-tertiary, #999);
+  transform: translateX(-50%);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.rec-lanes {
+  position: relative;
+  height: 166px;
+  overflow-y: auto;
+  cursor: crosshair;
+}
+
+.rec-lane-row {
+  position: relative;
+  height: 26px;
+  border-bottom: 0.5px dashed var(--color-border-tertiary, rgba(0, 0, 0, 0.08));
+}
+
+/* 元素存在区间条：绿=新增出现，条上的竖线=每次被改动 */
+.rec-bar {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 10px;
+  min-width: 3px;
+  border-radius: 5px;
+  background: rgba(83, 74, 183, 0.28);
+  border: 0.5px solid rgba(83, 74, 183, 0.55);
+  pointer-events: auto;
+}
+
+.rec-bar-mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: rgba(83, 74, 183, 0.9);
+  pointer-events: none;
+}
+
+.rec-lane-empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--color-text-tertiary, #999);
+}
+
+.rec-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #d85a30;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.rec-playhead::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -4px;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid #d85a30;
+}
+
+.rec-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-top: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.12));
+}
+
+.rec-hint {
+  font-size: 11px;
+  color: var(--color-text-tertiary, #999);
+}
+
+.rec-stats {
+  font-size: 11px;
+  color: var(--color-text-secondary, #555);
+  font-variant-numeric: tabular-nums;
+}

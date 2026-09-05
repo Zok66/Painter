@@ -23,6 +23,9 @@ export interface ToolbarActions {
   onToggleNotebook: () => void;
   animOpen: boolean;
   onToggleAnim: () => void;
+  /** 画布录制（过程回放）面板开关 */
+  recOpen: boolean;
+  onToggleRec: () => void;
   isDark: boolean;
 }
 
@@ -50,6 +53,8 @@ export default function Toolbar(props: ToolbarProps) {
   onToggleNotebook,
   animOpen,
   onToggleAnim,
+  recOpen,
+  onToggleRec,
   isDark,
   saving,
 } = props;
@@ -136,6 +141,33 @@ export default function Toolbar(props: ToolbarProps) {
             </svg>
           </span>
           <span className="anim-text">动画</span>
+        </button>
+
+        {/* 画布录制：按时间记下画布上每一笔与每次增删，回放像录屏 */}
+        <button
+          className={clsx("btn btn-rec", recOpen && "active")}
+          onClick={onToggleRec}
+          title="录制：记下画布上的每一笔与每次增删，可回放并导出 GIF"
+          aria-pressed={recOpen}
+        >
+          <span className="rec-icon" aria-hidden>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            >
+              {/* 摄像机机身 + 镜头（录像机） */}
+              <path d="M3 7.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H3z" />
+              <path d="M15.5 11.2l5-2.7v7l-5-2.7z" />
+              <circle cx="8.5" cy="12" r="2.6" fill="currentColor" stroke="none" />
+            </svg>
+          </span>
+          <span className="rec-text">录制</span>
         </button>
 
         <div className="divider" />
