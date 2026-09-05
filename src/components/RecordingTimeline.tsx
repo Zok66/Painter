@@ -98,8 +98,14 @@ export interface RecordingTimelineProps {
   /** null = 还没录过 */
   project: RecProject | null;
   recording: boolean;
-  /** 录制中的实时秒数（project 还没生成时用它显示时长） */
+  /** 录制中实时秒数（project 还没生成时用它显示时长） */
   recSeconds: number;
+  /** 录制暂停中 */
+  paused: boolean;
+  /** 录制中暂停 / 继续 */
+  onPauseToggle: () => void;
+  /** 续录：接着现有时间轴末尾继续录制 */
+  onContinue: () => void;
   playheadT: number;
   playing: boolean;
   /** 采样帧率（录制前的设置项，录制中禁用） */
@@ -132,6 +138,9 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     project,
     recording,
     recSeconds,
+    paused,
+    onPauseToggle,
+    onContinue,
     playheadT,
     playing,
     fps,
@@ -354,19 +363,39 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     <div className="rec-timeline">
       <div className="rec-header">
         {recording ? (
-          <button className="rec-btn rec-stop" onClick={onStop} title="停止录制">
-            <span className="rec-dot" />
-            停止
-          </button>
+          <>
+            <button
+              className="rec-play"
+              onClick={onPauseToggle}
+              title={paused ? "继续录制" : "暂停录制"}
+            >
+              <Icon name={paused ? "play" : "pause"} />
+            </button>
+            <button className="rec-btn rec-stop" onClick={onStop} title="停止录制">
+              <span className="rec-dot" />
+              停止
+            </button>
+          </>
         ) : (
-          <button
-            className="rec-btn rec-start"
-            onClick={onStart}
-            title={hasData ? "清空旧录制并重新开始" : "开始录制画布上的一切变化"}
-          >
-            <span className="rec-dot" />
-            {hasData ? "重新录制" : "开始录制"}
-          </button>
+          <>
+            {hasData && (
+              <button
+                className="rec-btn rec-continue"
+                onClick={onContinue}
+                title="接着现有时间轴末尾继续录制"
+              >
+                续录
+              </button>
+            )}
+            <button
+              className="rec-btn rec-start"
+              onClick={onStart}
+              title={hasData ? "清空旧录制并重新开始" : "开始录制画布上的一切变化"}
+            >
+              <span className="rec-dot" />
+              {hasData ? "重新录制" : "开始录制"}
+            </button>
+          </>
         )}
 
         <button
@@ -379,9 +408,9 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
         </button>
 
         {recording ? (
-          <span className="rec-time rec-time-live">
-            <span className="rec-dot live" />
-            {recSeconds.toFixed(2)}s 录制中
+          <span className={`rec-time${paused ? "" : " rec-time-live"}`}>
+            <span className={`rec-dot${paused ? "" : " live"}`} />
+            {recSeconds.toFixed(2)}s {paused ? "已暂停" : "录制中"}
           </span>
         ) : (
           <span className="rec-time">

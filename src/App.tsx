@@ -397,6 +397,14 @@ export default function App() {
   const recStartAtRef = useRef(0);
   /** 上次采样时刻（ms）：定时采样按 fps 走，onChange 补采要节流，避免 pointermove 把事件数灌爆 */
   const recLastSampleAtRef = useRef(0);
+  /** 录制暂停中：采样定时器已停、画布变化不采，恢复时把起点平移暂停时长 */
+  const [recPaused, setRecPaused] = useState(false);
+  const recPausedRef = useRef(false);
+  const recPauseAtRef = useRef(0);
+  /** 续录：接续的旧工程时长（null = 全新录制）；采样 t 都要加这个偏移 */
+  const recContinueFromRef = useRef<number | null>(null);
+  /** 续录：被接续的旧工程（录制期间 recProjectRef 置空，停止时合并回它） */
+  const recPrevProjectRef = useRef<RecProject | null>(null);
   /** 进入面板时的画布内容，关闭面板时还原（回放期改动画布不该写进页面） */
   const recRestoreElsRef = useRef<ExcalidrawElement[] | null>(null);
   // ref 镜像：录制回调 / 定时器里读的是 ref，避免闭包拿到过期的 state
@@ -406,6 +414,9 @@ export default function App() {
   useEffect(() => {
     recRecordingRef.current = recRecording;
   }, [recRecording]);
+  useEffect(() => {
+    recPausedRef.current = recPaused;
+  }, [recPaused]);
   useEffect(() => {
     recPlayingRef.current = recPlaying;
   }, [recPlaying]);
@@ -525,13 +536,13 @@ export default function App() {
       // 定时采样按 fps 走，中间会漏掉 Excalidraw 在 pointerup / 删除之后做的
       // 异步归一化（freedraw 的 simplify 会重写 points）。漏了就会「回放末态 ≠ 用户画布」。
       // 这里借 onChange 补一次采样，并用 15ms 节流防止 pointermove 把事件数灌爆。
-      if (recRecordingRef.current && recorderRef.current) {
+      if (recRecordingRef.current && recorderRef.current && !recPausedRef.current) {
         const now = performance.now();
         if (now - recLastSampleAtRef.current >= 15) {
           recLastSampleAtRef.current = now;
           recorderRef.current.sample(
             elements,
-            (now - recStartAtRef.current) / 1000,
+            (recContinueFromRef.current ?? 0) + (now - recStartAtRef.current) / 1000,
           );
         }
       }
@@ -1419,26 +1430,57 @@ export default function App() {
     }
   }, []);
 
-  /** 停止录制：收采样、生成工程、存盘、播放头落到末尾 */
+  /** 停止录制：收采样、生成工程、存盘、播放头落到末尾。续录时与旧工程合并 */
   const stopRecording = useCallback(() => {
     stopRecTimers();
     const rec = recorderRef.current;
     recRecordingRef.current = false;
     setRecRecording(false);
+    setRecPaused(false);
+    recPausedRef.current = false;
     recorderRef.current = null;
+    const from = recContinueFromRef.current;
+    recContinueFromRef.current = null;
     if (!rec) return;
     const duration = (performance.now() - recStartAtRef.current) / 1000;
     // 收尾再采一次：把「停止这一刻」的画布状态钉死，
     // 否则最后一次定时采样之后的任何变化（含 Excalidraw 的收尾归一化）都不会进工程，
     // 回放播完会和用户的画布差一点点。
     const api = excalidrawAPIRef.current;
-    if (api) rec.sample(api.getSceneElements() as ExcalidrawElement[], duration);
-    const project = rec.finish(duration);
-    if (project.events.length === 0) {
-      commitRecProject(null);
-      setRecSeconds(0);
-      toast("这段时间画布没有变化，未生成录制", "error");
+    if (api) {
+      rec.sample(
+        api.getSceneElements() as ExcalidrawElement[],
+        (from ?? 0) + duration,
+      );
+    }
+    const recorded = rec.finish(duration);
+    const prev = from != null ? recPrevProjectRef.current : null;
+    recPrevProjectRef.current = null;
+    if (recorded.events.length === 0) {
+      if (prev) {
+        // 续录没录到新东西：保留原工程
+        commitRecProject(prev);
+        recPlayheadRef.current = prev.durationSec;
+        setRecPlayheadT(prev.durationSec);
+        toast("续录没有新增内容");
+      } else {
+        commitRecProject(null);
+        setRecSeconds(0);
+        toast("这段时间画布没有变化，未生成录制", "error");
+      }
       return;
+    }
+    let project = recorded;
+    if (prev && from != null) {
+      // 续录合并：新事件整体平移到旧时间轴末尾之后
+      project = {
+        ...prev,
+        events: [
+          ...prev.events,
+          ...recorded.events.map((e) => ({ ...e, t: e.t + from })),
+        ].sort((a, b) => a.t - b.t),
+        durationSec: from + recorded.durationSec,
+      };
     }
     const pageId = notebookStateRef.current.activePageId;
     const ok = saveRecording(pageId, project);
@@ -1446,8 +1488,13 @@ export default function App() {
     setRecProject(project);
     recPlayheadRef.current = project.durationSec;
     setRecPlayheadT(project.durationSec);
-    if (ok) toast(`录制完成 · ${project.durationSec.toFixed(1)}s`);
-    else toast("录制太大没能存入本地，本次仍可播放与导出", "error");
+    if (ok) {
+      toast(
+        from != null
+          ? `续录完成 · 总时长 ${project.durationSec.toFixed(1)}s`
+          : `录制完成 · ${project.durationSec.toFixed(1)}s`,
+      );
+    } else toast("录制太大没能存入本地，本次仍可播放与导出", "error");
   }, [stopRecTimers, commitRecProject, toast]);
 
   /**
@@ -1533,6 +1580,39 @@ export default function App() {
   const stopRecPlaybackRef = useRef(stopRecPlayback);
   stopRecPlaybackRef.current = stopRecPlayback;
 
+  /** 启动采样定时器 + 时长显示定时器（录制与续录共用；t 含续录偏移） */
+  const beginRecTimers = useCallback(
+    (fps: number) => {
+      stopRecTimers();
+      recSampleTimerRef.current = setInterval(
+        () => {
+          const rec = recorderRef.current;
+          const apiNow = excalidrawAPIRef.current;
+          if (!rec || !apiNow) return;
+          const now = performance.now();
+          recLastSampleAtRef.current = now;
+          rec.sample(
+            apiNow.getSceneElements() as ExcalidrawElement[],
+            (recContinueFromRef.current ?? 0) + (now - recStartAtRef.current) / 1000,
+          );
+          if (rec.limitReached) {
+            stopRecordingRef.current();
+            toast("已达录制上限，自动停止", "error");
+          }
+        },
+        Math.max(16, Math.round(1000 / fps)),
+      );
+      // 时长显示不必跟到采样帧率，200ms 刷新足够且省掉大量重渲染
+      recUiTimerRef.current = setInterval(() => {
+        setRecSeconds(
+          (recContinueFromRef.current ?? 0) +
+            (performance.now() - recStartAtRef.current) / 1000,
+        );
+      }, 200);
+    },
+    [stopRecTimers, toast],
+  );
+
   /**
    * 开始录制：抓取当前画布作为基线场景，之后按 fps 采样 diff。
    * 采样的定时器只做「读场景 → 记差异」，不碰画布，不会打断用户作画。
@@ -1546,9 +1626,10 @@ export default function App() {
     if (!recRestoreElsRef.current) {
       recRestoreElsRef.current = els.map((e) => ({ ...e }));
     }
-    const fps = recFpsRef.current;
-    recorderRef.current = new CanvasRecorder({ fps, elements: els });
+    recorderRef.current = new CanvasRecorder({ fps: recFpsRef.current, elements: els });
     recStartAtRef.current = performance.now();
+    recContinueFromRef.current = null;
+    recPrevProjectRef.current = null;
     recProjectRef.current = null;
     setRecProject(null);
     deleteRecording(notebookStateRef.current.activePageId);
@@ -1557,30 +1638,60 @@ export default function App() {
     setRecSeconds(0);
     setRecRecording(true);
     recRecordingRef.current = true;
-
-    stopRecTimers();
-    recSampleTimerRef.current = setInterval(
-      () => {
-        const rec = recorderRef.current;
-        const apiNow = excalidrawAPIRef.current;
-        if (!rec || !apiNow) return;
-        const now = performance.now();
-        recLastSampleAtRef.current = now;
-        const t = (now - recStartAtRef.current) / 1000;
-        rec.sample(apiNow.getSceneElements() as ExcalidrawElement[], t);
-        if (rec.limitReached) {
-          stopRecordingRef.current();
-          toast("已达录制上限，自动停止", "error");
-        }
-      },
-      Math.max(16, Math.round(1000 / fps)),
-    );
-    // 时长显示不必跟到采样帧率，200ms 刷新足够且省掉大量重渲染
-    recUiTimerRef.current = setInterval(() => {
-      setRecSeconds((performance.now() - recStartAtRef.current) / 1000);
-    }, 200);
+    setRecPaused(false);
+    recPausedRef.current = false;
+    beginRecTimers(recFpsRef.current);
     toast("开始录制：每一笔、每次增删都会按时间记下来");
-  }, [stopRecPlayback, stopRecTimers, toast]);
+  }, [stopRecPlayback, beginRecTimers, toast]);
+
+  /** 续录：接着现有时间轴末尾继续录。画布先 seek 到末态，保证 diff 基线一致 */
+  const continueRecording = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    const prev = recProjectRef.current;
+    if (!api || !prev) return;
+    stopRecPlayback();
+    api.updateScene({
+      elements: buildRecordSceneAtTime(prev, prev.durationSec),
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    const els = api.getSceneElements() as ExcalidrawElement[];
+    if (!recRestoreElsRef.current) {
+      recRestoreElsRef.current = els.map((e) => ({ ...e }));
+    }
+    recPrevProjectRef.current = prev;
+    recContinueFromRef.current = prev.durationSec;
+    recorderRef.current = new CanvasRecorder({ fps: recFpsRef.current, elements: els });
+    recStartAtRef.current = performance.now();
+    recProjectRef.current = null;
+    setRecProject(null);
+    recPlayheadRef.current = 0;
+    setRecPlayheadT(0);
+    setRecSeconds(prev.durationSec);
+    setRecRecording(true);
+    recRecordingRef.current = true;
+    setRecPaused(false);
+    recPausedRef.current = false;
+    beginRecTimers(recFpsRef.current);
+    toast("续录中：新内容会接在原有时间轴之后");
+  }, [stopRecPlayback, beginRecTimers, toast]);
+
+  /** 录制中暂停 / 继续：暂停=停采样计时器（画布变化不采），恢复=起点平移暂停时长 */
+  const toggleRecPause = useCallback(() => {
+    if (!recRecordingRef.current || !recorderRef.current) return;
+    if (recPausedRef.current) {
+      recStartAtRef.current += performance.now() - recPauseAtRef.current;
+      recPausedRef.current = false;
+      setRecPaused(false);
+      beginRecTimers(recFpsRef.current);
+      toast("继续录制");
+    } else {
+      recPauseAtRef.current = performance.now();
+      recPausedRef.current = true;
+      setRecPaused(true);
+      stopRecTimers();
+      toast("录制已暂停");
+    }
+  }, [beginRecTimers, stopRecTimers, toast]);
 
   /** 录制中拖播放头 / 播放：无意义，直接忽略 */
   const handleRecPlayheadChange = useCallback(
@@ -3014,6 +3125,9 @@ export default function App() {
           project={recProject}
           recording={recRecording}
           recSeconds={recSeconds}
+          paused={recPaused}
+          onPauseToggle={toggleRecPause}
+          onContinue={continueRecording}
           playheadT={recPlayheadT}
           playing={recPlaying}
           fps={recFps}

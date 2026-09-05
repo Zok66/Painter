@@ -88,6 +88,16 @@
   color: #fff;
 }
 
+/* 续录按钮：紫色调（延续时间条主色） */
+.rec-btn.rec-continue {
+  border-color: rgba(83, 74, 183, 0.55);
+  color: #534ab7;
+}
+
+.rec-btn.rec-continue:hover:not(:disabled) {
+  background: rgba(83, 74, 183, 0.08);
+}
+
 .rec-btn.rec-stop .rec-dot {
   background: #fff;
   border-radius: 2px;
