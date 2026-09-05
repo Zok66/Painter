@@ -1451,17 +1451,19 @@ export default function App() {
   /**
    * 剪辑：删除所选时间区间。
    * rowId 为 null → 全层剪辑（时间轴前移拼接）；否则只剪该元素（全局时间轴不动）。
+   * 该层在区间内没有内容（删了等于没删）时，降级为整段时间轴剪切，保证删除必有反应。
    */
   const handleRecDeleteRange = useCallback(
     (rowId: string | null, t0: number, t1: number) => {
       const cur = recProjectRef.current;
       if (!cur) return;
       stopRecPlayback();
-      const next = rowId
+      let next = rowId
         ? deleteElementRange(cur, rowId, t0, t1)
         : deleteRange(cur, t0, t1);
       if (rowId && next.events.length === cur.events.length) {
-        toast("该层在所选区间内没有内容，未做修改");
+        next = deleteRange(cur, t0, t1);
+        toast("该层此区间无内容，已按整段时间轴剪切");
       }
       commitRecProject(next);
       recPlayheadRef.current = 0;
@@ -1470,17 +1472,21 @@ export default function App() {
     [stopRecPlayback, commitRecProject, toast],
   );
 
-  /** 剪辑：仅保留所选时间区间（分层时只作用于该元素） */
+  /**
+   * 剪辑：仅保留所选时间区间（分层时只作用于该元素）。
+   * 该层在区间内外都没有内容可动时，降级为整段时间轴保留。
+   */
   const handleRecKeepRange = useCallback(
     (rowId: string | null, t0: number, t1: number) => {
       const cur = recProjectRef.current;
       if (!cur) return;
       stopRecPlayback();
-      const next = rowId
+      let next = rowId
         ? keepElementRange(cur, rowId, t0, t1)
         : keepRange(cur, t0, t1);
       if (rowId && next.events.length === cur.events.length) {
-        toast("该层在所选区间外没有内容，未做修改");
+        next = keepRange(cur, t0, t1);
+        toast("该层此区间无可剪辑内容，已按整段时间轴保留");
       }
       commitRecProject(next);
       recPlayheadRef.current = 0;
