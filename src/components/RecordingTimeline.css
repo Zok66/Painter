@@ -282,6 +282,20 @@
   background: rgba(83, 74, 183, 0.28);
   border: 0.5px solid rgba(83, 74, 183, 0.55);
   pointer-events: auto;
+  cursor: grab;
+}
+
+.rec-bar:hover:not(.selected) {
+  background: rgba(83, 74, 183, 0.40);
+  border-color: rgba(83, 74, 183, 0.75);
+}
+
+/* 选中态：橙红外环 + 高亮填充（剪映感） */
+.rec-bar.selected {
+  background: rgba(216, 90, 48, 0.32);
+  border: 1px solid #d85a30;
+  box-shadow: 0 0 0 2px rgba(216, 90, 48, 0.18);
+  cursor: grabbing;
 }
 
 .rec-bar-mark {

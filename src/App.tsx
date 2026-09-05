@@ -105,6 +105,7 @@ import {
   keepRange,
   deleteElementRange,
   keepElementRange,
+  shiftElement,
   DEFAULT_REC_FPS,
   type RecProject,
 } from "./lib/recording";
@@ -1493,6 +1494,20 @@ export default function App() {
       setRecPlayheadT(0);
     },
     [stopRecPlayback, commitRecProject, toast],
+  );
+
+  /** 平移整层（拖动时间条）：把目标元素的所有事件 t 加 delta 秒 */
+  const handleRecShiftElement = useCallback(
+    (id: string, deltaT: number) => {
+      const cur = recProjectRef.current;
+      if (!cur) return;
+      stopRecPlayback();
+      const next = shiftElement(cur, id, deltaT);
+      commitRecProject(next);
+      recPlayheadRef.current = 0;
+      setRecPlayheadT(0);
+    },
+    [stopRecPlayback, commitRecProject],
   );
 
   // 定时器/effect 里的闭包容易过期，统一走 ref 取最新函数
@@ -2999,6 +3014,7 @@ export default function App() {
           onClose={handleToggleRec}
           onDeleteRange={handleRecDeleteRange}
           onKeepRange={handleRecKeepRange}
+          onShiftElement={handleRecShiftElement}
         />
       )}
       {/* SVG 导出前的背景选择弹窗：渲染在 .app 内，才能继承 .app 上的

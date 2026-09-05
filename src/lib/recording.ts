@@ -547,6 +547,31 @@ export function keepElementRange(
   return { ...project, events: [...extra, ...kept].sort((a, b) => a.t - b.t) };
 }
 
+/**
+ * 把目标元素的所有事件整体水平平移 dt 秒（剪映式拖动时间条）。
+ * 基线元素（事件流里没有它 → 始终依赖 initial））无事件可平移，原样返回。
+ * 平移范围 clamp 到 [0, durationSec]——整体不出时间轴。
+ */
+export function shiftElement(
+  project: RecProject,
+  id: string,
+  deltaT: number,
+): RecProject {
+  if (!deltaT) return project;
+  const elementEvents = project.events.filter((e) => e.id === id);
+  if (elementEvents.length === 0) return project;
+  const minT = Math.min(...elementEvents.map((e) => e.t));
+  const maxT = Math.max(...elementEvents.map((e) => e.t));
+  let dt = deltaT;
+  if (dt < -minT) dt = -minT;
+  if (dt > project.durationSec - maxT) dt = project.durationSec - maxT;
+  if (!dt) return project;
+  const events = project.events
+    .map((e) => (e.id === id ? { ...e, t: Math.max(0, e.t + dt) } : e))
+    .sort((a, b) => a.t - b.t);
+  return { ...project, events };
+}
+
 // ── 存取（挂在笔记本页上，与关键帧工程同策略）──────────────
 export function createRecording(fps: number): RecProject {
   return { version: 1, fps, durationSec: 0, initial: [], events: [] };

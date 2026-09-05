@@ -121,6 +121,8 @@ export interface RecordingTimelineProps {
   onDeleteRange: (rowId: string | null, t0: number, t1: number) => void;
   /** 仅保留所选时间区间，区间外全丢弃 */
   onKeepRange: (rowId: string | null, t0: number, t1: number) => void;
+  /** 拖动时间条→平移整层：delta 秒，可正可负 */
+  onShiftElement: (rowId: string, deltaT: number) => void;
 }
 
 export default function RecordingTimeline(props: RecordingTimelineProps) {
@@ -145,6 +147,7 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     onClose,
     onDeleteRange,
     onKeepRange,
+    onShiftElement,
   } = props;
 
   const laneWrapRef = useRef<HTMLDivElement | null>(null);
@@ -169,8 +172,14 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
   const selAnchorRef = useRef(0);
   /** 框选起点所在的元素行 id（分层模式用） */
   const selRowIdRef = useRef<string | undefined>(undefined);
-  /** 当前拖拽在干啥：playhead=移动播放头，select=框选，t0/t1=拖选区把手 */
-  const dragModeRef = useRef<"playhead" | "select" | "t0" | "t1">("playhead");
+  /** 当前拖拽在干啥：playhead=移动播放头，select=框选，t0/t1=拖选区把手，bar=平移整层 */
+  const dragModeRef = useRef<"playhead" | "select" | "t0" | "t1" | "bar">("playhead");
+  /** 点选/拖拽：当前选中的元素行 id（用于高亮 + 平移锚点） */
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  /** 平移拖拽：起点指针 X */
+  const barDragStartXRef = useRef(0);
+  /** 平移拖拽：已累计应用的 delta（避免重复 commit 同一位置） */
+  const barLastAppliedRef = useRef(0);
 
   const [showExport, setShowExport] = useState(false);
   const [exportScale, setExportScale] = useState(1);
@@ -253,6 +262,19 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
         });
         return;
       }
+      if (mode === "bar") {
+        const id = selectedRowIdRef.current;
+        if (!id) return;
+        const wrap = laneWrapRef.current;
+        const w = wrap?.getBoundingClientRect().width || 1;
+        const targetDelta = ((e.clientX - barDragStartXRef.current) / w) * durationSec;
+        const last = barLastAppliedRef.current;
+        const step = targetDelta - last;
+        if (!step) return;
+        barLastAppliedRef.current = targetDelta;
+        onShiftElement(id, step);
+        return;
+      }
       const cur = selRef.current;
       if (!cur) return;
       if (mode === "t0") {
@@ -268,7 +290,13 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
-  }, [onPlayheadChange, tFromClientX, durationSec]);
+  }, [onPlayheadChange, tFromClientX, durationSec, onShiftElement]);
+
+  /** selectedRowId 给 window move 用 */
+  const selectedRowIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedRowIdRef.current = selectedRowId;
+  }, [selectedRowId]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {
@@ -488,17 +516,34 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
               ))}
             </div>
             <div className="rec-lanes" ref={lanesRef}>
-              {rows.map((row) => {
+{rows.map((row) => {
                 const end = row.endT ?? durationSec;
                 const w = Math.max(end - row.startT, 0.02);
+                const isSelected = selectedRowId === row.id;
                 return (
                   <div key={row.id} className="rec-lane-row">
                     <div
-                      className="rec-bar"
+                      className={`rec-bar${isSelected ? " selected" : ""}`}
                       style={{ left: pct(row.startT), width: `${(w / durationSec) * 100}%` }}
                       title={`${typeLabel(row.type)} · ${row.startT.toFixed(2)}s → ${
                         row.endT === null ? "结束" : `${row.endT.toFixed(2)}s 被删除`
-                      }`}
+                      } · 点击选中 / 按住拖动平移`}
+                      onPointerDown={(e) => {
+                        // 剪辑模式下条不拦截：拖哪儿都是区间框选
+                        if (editing) return;
+                        e.stopPropagation();
+                        // 基线元素（events 里没有它）拖动没意义，仅选中
+                        const shiftable =
+                          !!project &&
+                          project.events.some((ev) => ev.id === row.id);
+                        setSel(null);
+                        setSelectedRowId(row.id);
+                        barDragStartXRef.current = e.clientX;
+                        barLastAppliedRef.current = 0;
+                        if (!shiftable) return;
+                        setDragging(true);
+                        dragModeRef.current = "bar";
+                      }}
                     >
                       {row.updates.map((u, i) => (
                         <span
