@@ -415,7 +415,13 @@ export function recordingSummary(project: RecProject): RecSummary {
 // 解决：用被剪区间起点的场景做锚点，给这类孤儿子元素补一个 add，
 // 让它们从「区间前的状态」无缝续上。
 
-/** 给 ke 补上「悬空引用」元素的 add 锚点，保证回放连续 */
+/**
+ * 给 ke 补「add 被剪掉、但元素在锚点时刻仍存在」的 add 锚点，保证回放连续。
+ * 关键：以 anchorT（被剪区间右端）的场景为基准扫描——只要元素那一刻在场、
+ * 且它的 add 不在保留事件里（add 落在被剪区间内），就补一个 add@anchorAt。
+ * 这覆盖了「一笔笔画完整画在被剪区间内、之后再没被改过」的情况：
+ * 它没有任何 kept 事件，若不补锚点会被整体抹除（用户视角=整层消失）。
+ */
 function applyAnchorAdds(
   project: RecProject,
   kept: RecEvent[],
@@ -423,26 +429,14 @@ function applyAnchorAdds(
   anchorAt: number,
 ): RecEvent[] {
   const before = buildRecordSceneAtTime(project, Math.max(0, anchorT) + 1e-4);
-  const beforeMap = new Map<string, ExcalidrawElement>();
-  for (const el of before) beforeMap.set(el.id, el);
-
   const initialIds = new Set(project.initial.map((el) => el.id));
   const addedIds = new Set<string>();
   for (const e of kept) if (e.kind === "add") addedIds.add(e.id);
 
-  const needAdd = new Set<string>();
-  for (const e of kept) {
-    if (e.kind === "add") continue;
-    if (addedIds.has(e.id)) continue;
-    if (initialIds.has(e.id)) continue; // 基线里就有，不需要补
-    needAdd.add(e.id);
-  }
-
   const extra: RecEvent[] = [];
-  for (const id of needAdd) {
-    const snap = beforeMap.get(id);
-    if (!snap) continue;
-    extra.push({ t: anchorAt, kind: "add", id, el: snapshotElement(snap) });
+  for (const el of before) {
+    if (initialIds.has(el.id) || addedIds.has(el.id)) continue;
+    extra.push({ t: anchorAt, kind: "add", id: el.id, el: snapshotElement(el) });
   }
   if (!extra.length) return kept;
   return [...extra, ...kept].sort((a, b) => a.t - b.t);
