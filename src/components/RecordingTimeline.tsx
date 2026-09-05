@@ -191,10 +191,25 @@ export default function RecordingTimeline(props: RecordingTimelineProps) {
     : Math.max(project?.durationSec ?? 0, 0.1);
   const hasData = !!project && project.events.length > 0;
 
-  const rows = useMemo(
-    () => (project ? recordingRows(project) : []),
-    [project],
-  );
+  /**
+   * 稳定行序：行位置只取决于「首次出现顺序」，与 startT 无关。
+   * 否则拖动时间条时每次平移提交都会按 startT 重排——被拖条与上下条的
+   * 出生时刻一交错，两行当场互换位置，看起来就是拖着的条"自动切换"。
+   */
+  const rowOrderRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!project) rowOrderRef.current.clear(); // 新录制 / 清空时重置
+  }, [project]);
+  const rows = useMemo(() => {
+    const raw = project ? recordingRows(project) : [];
+    const order = rowOrderRef.current;
+    for (const r of raw) {
+      if (!order.has(r.id)) order.set(r.id, order.size);
+    }
+    return [...raw].sort(
+      (a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+    );
+  }, [project]);
   const summary = useMemo(
     () => (project ? recordingSummary(project) : null),
     [project],
